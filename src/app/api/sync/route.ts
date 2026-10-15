@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { fetchOpportunities, fetchContacts, fetchConversations } from '@/lib/ghl';
+import ghl from '@/lib/ghl-unified';
 import { 
   sql, 
   createSyncLog, 
@@ -11,7 +11,7 @@ import {
 
 export const maxDuration = 300; // 5 minutes
 
-// Custom Fields mapping para contacts
+// Custom Fields mapping para contacts (field ID → column name)
 const CUSTOM_FIELDS_MAP: Record<string, string> = {
   'contactsituacao_comercial': 'situacao_comercial',
   'contactresultado_ultimo_contato': 'resultado_ultimo_contato',
@@ -19,18 +19,28 @@ const CUSTOM_FIELDS_MAP: Record<string, string> = {
   'contactsegmento_do_cliente': 'segmento_cliente',
 };
 
+// Mode detection for logging
+function getSyncMode(): string {
+  return ghl.isCliMode() ? 'CLI' : 'API';
+}
+
 export async function POST() {
   const syncLogId = await createSyncLog('full_sync');
   let totalSynced = 0;
   const result = { opportunities: 0, contacts: 0, conversations: 0 };
+  const mode = getSyncMode();
 
   try {
+    console.log(`[SYNC] Starting sync in ${mode} mode...`);
+    
     // Fetch all data from GHL
     const [opportunities, contacts, conversations] = await Promise.all([
-      fetchOpportunities(),
-      fetchContacts(),
-      fetchConversations(),
+      ghl.fetchOpportunities(),
+      ghl.fetchContacts(),
+      ghl.fetchConversations(),
     ]);
+    
+    console.log(`[SYNC] Fetched: ${opportunities.length} opps, ${contacts.length} contacts, ${conversations.length} convs`);
 
     // Sync opportunities
     for (const opp of opportunities) {

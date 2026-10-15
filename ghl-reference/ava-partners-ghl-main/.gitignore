@@ -1,0 +1,38 @@
+# ─────────────────────────────────────────────────────────────
+#  SEGREDOS — NUNCA versionar (o token do Firebase = login inteiro do GHL)
+# ─────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.token
+*.pit
+secrets/
+credentials*.json
+
+# Config local do Claude Code (pode conter credenciais MCP)
+.claude/settings.local.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+
+# Node / build
+node_modules/
+dist/
+build/
+
+# SO / editor
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/
+
+# Scratch / temporários
+scratchpad/
+tmp/
+*.tmp
