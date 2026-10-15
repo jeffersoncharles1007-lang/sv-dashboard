@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql, getContacts, getOpportunities } from '@/lib/postgres';
+import { PIPELINE_NAMES } from '@/lib/constants';
 
 interface KPIData {
   receitaPipeline: number;
   oportunidadesEmAndamento: number;
   taxaConversao: number;
   clientesEmSilencio: number;
+  contatosTotal: number;
+  ganhos: number;
+  perdidos: number;
+  orcamentosNovos: number;
 }
 
 function getPeriodDates(period: string, start?: string, end?: string) {
@@ -73,14 +78,26 @@ function getPeriodDates(period: string, start?: string, end?: string) {
   return { startDate, endDate, previousStartDate, previousEndDate };
 }
 
-function calculateKPIs(opportunities: any[], contacts: any[], startDate: Date, endDate: Date): KPIData {
-  const periodOpps = opportunities.filter((o: any) => {
+function calculateKPIs(
+  opportunities: any[], 
+  contacts: any[], 
+  startDate: Date, 
+  endDate: Date,
+  pipelineFilter?: string
+): KPIData {
+  // Filtrar por pipeline se especificado
+  let filteredOpps = opportunities;
+  if (pipelineFilter && pipelineFilter !== 'all') {
+    filteredOpps = opportunities.filter((o: any) => o.pipeline_id === pipelineFilter);
+  }
+
+  const periodOpps = filteredOpps.filter((o: any) => {
     const created = new Date(o.created_at || 0);
     return created >= startDate && created <= endDate;
   });
 
-  const totalFechados = opportunities.filter((o: any) => ['won', 'lost'].includes(o.status)).length;
-  const totalGanhos = opportunities.filter((o: any) => o.status === 'won').length;
+  const totalFechados = filteredOpps.filter((o: any) => ['won', 'lost'].includes(o.status)).length;
+  const totalGanhos = filteredOpps.filter((o: any) => o.status === 'won').length;
   
   const receitaPipeline = periodOpps
     .filter((o: any) => o.status === 'open')
@@ -105,6 +122,10 @@ function calculateKPIs(opportunities: any[], contacts: any[], startDate: Date, e
     oportunidadesEmAndamento,
     taxaConversao: Math.round(taxaConversao),
     clientesEmSilencio,
+    contatosTotal: contacts.length,
+    ganhos: totalGanhos,
+    perdidos: filteredOpps.filter((o: any) => o.status === 'lost').length,
+    orcamentosNovos: periodOpps.length,
   };
 }
 
@@ -121,6 +142,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period') || 'all';
+    const pipeline = searchParams.get('pipeline') || 'all';
     const start = searchParams.get('start') || undefined;
     const end = searchParams.get('end') || undefined;
 
@@ -133,10 +155,10 @@ export async function GET(request: NextRequest) {
     ]);
 
     // Calcular KPIs do período atual
-    const kpis = calculateKPIs(opportunities, contacts, startDate, endDate);
+    const kpis = calculateKPIs(opportunities, contacts, startDate, endDate, pipeline);
     
     // Calcular KPIs do período anterior
-    const previousKPIs = calculateKPIs(opportunities, contacts, previousStartDate, previousEndDate);
+    const previousKPIs = calculateKPIs(opportunities, contacts, previousStartDate, previousEndDate, pipeline);
 
     // Calcular comparativos
     const comparatives = {
@@ -147,7 +169,33 @@ export async function GET(request: NextRequest) {
         ...calculateChange(kpis.clientesEmSilencio, previousKPIs.clientesEmSilencio),
         betterWhen: 'lower',
       },
+      ganhos: calculateChange(kpis.ganhos, previousKPIs.ganhos),
+      perdidos: {
+        ...calculateChange(kpis.perdidos, previousKPIs.perdidos),
+        betterWhen: 'lower',
+      },
     };
+
+    // Filtrar opportunities por pipeline
+    let filteredOpps = opportunities;
+    if (pipeline !== 'all') {
+      filteredOpps = opportunities.filter((o: any) => o.pipeline_id === pipeline);
+    }
+
+    // ===== DADOS POR PIPELINE =====
+    const pipelineStats = Object.entries(PIPELINE_NAMES).map(([id, name]) => {
+      const opps = opportunities.filter((o: any) => o.pipeline_id === id);
+      return {
+        id,
+        name,
+        total: opps.length,
+        ganhos: opps.filter((o: any) => o.status === 'won').length,
+        perdidos: opps.filter((o: any) => o.status === 'lost').length,
+        emAberto: opps.filter((o: any) => o.status === 'open').length,
+        receita: opps.filter((o: any) => o.status === 'open')
+          .reduce((sum: number, o: any) => sum + (o.monetary_value || 0), 0),
+      };
+    });
 
     // ===== GRÁFICO 1: Funil de Situação =====
     const situacaoCount: Record<string, number> = {};
@@ -197,7 +245,16 @@ export async function GET(request: NextRequest) {
       .map(([name, value]) => ({ name, value }))
       .filter(d => d.value > 0);
 
-    // ===== GRÁFICO 4: Performance por Vendedor =====
+    // ===== GRÁFICO 4: Performance por Pipeline (novo) =====
+    const chartPipeline = pipelineStats.map(p => ({
+      name: p.name,
+      total: p.total,
+      ganhos: p.ganhos,
+      perdidos: p.perdidos,
+      receita: p.receita,
+    }));
+
+    // ===== TABELA 1: Ranking Vendedores =====
     const vendedores = ['emily', 'katherine', 'eduardo-pereira', 'crisostomo', 'angelo'];
     const desempenhoVendedores: Record<string, { ganhos: number; valor: number; count: number }> = {};
     
@@ -217,7 +274,7 @@ export async function GET(request: NextRequest) {
       }
     }
     
-    for (const opp of opportunities) {
+    for (const opp of filteredOpps) {
       const contact = contacts.find((c: any) => c.id === opp.contact_id);
       if (!contact) continue;
       
@@ -244,7 +301,6 @@ export async function GET(request: NextRequest) {
       }))
       .sort((a, b) => b.valor - a.valor);
 
-    // ===== TABELA 1: Ranking Vendedores =====
     const rankingVendedores = chartVendedores.map((v, i) => ({
       rank: i + 1,
       nome: v.name,
@@ -278,7 +334,7 @@ export async function GET(request: NextRequest) {
       .slice(0, 20);
 
     // ===== TABELA 3: Detalhamento de Perdas =====
-    const totalFechadosGeral = opportunities.filter((o: any) => ['won', 'lost'].includes(o.status)).length;
+    const totalFechadosGeral = filteredOpps.filter((o: any) => ['won', 'lost'].includes(o.status)).length;
     const detalhamentoPerdas = Object.entries(motivosPerda)
       .map(([motivo, count]) => ({
         motivo,
@@ -295,11 +351,16 @@ export async function GET(request: NextRequest) {
         current: { start: startDate.toISOString(), end: endDate.toISOString() },
         previous: { start: previousStartDate.toISOString(), end: previousEndDate.toISOString() },
       },
+      pipeline: {
+        selected: pipeline,
+        pipelines: pipelineStats,
+      },
       charts: {
         funnelSituacao,
         perdas: chartPerdas,
         temperatura: chartTemperatura,
         vendedores: chartVendedores,
+        pipeline: chartPipeline,
       },
       tables: {
         rankingVendedores,
@@ -308,11 +369,12 @@ export async function GET(request: NextRequest) {
       },
       meta: {
         totalContacts: contacts.length,
-        totalOpportunities: opportunities.length,
-        totalGanhos: opportunities.filter((o: any) => o.status === 'won').length,
-        totalPerdidos: opportunities.filter((o: any) => o.status === 'lost').length,
+        totalOpportunities: filteredOpps.length,
+        totalGanhos: filteredOpps.filter((o: any) => o.status === 'won').length,
+        totalPerdidos: filteredOpps.filter((o: any) => o.status === 'lost').length,
         lastSync: opportunities[0]?.last_synced_at || null,
         periodSelected: period,
+        pipelineSelected: pipeline,
       },
     });
 

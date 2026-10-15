@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 
 type PeriodOption = 'all' | 'week' | 'month' | 'quarter' | 'custom';
+type PipelineOption = 'all' | string;
 
 interface Comparative {
   value: number;
@@ -43,6 +44,20 @@ interface KPIData {
   oportunidadesEmAndamento: number;
   taxaConversao: number;
   clientesEmSilencio: number;
+  contatosTotal: number;
+  ganhos: number;
+  perdidos: number;
+  orcamentosNovos: number;
+}
+
+interface PipelineInfo {
+  id: string;
+  name: string;
+  total: number;
+  ganhos: number;
+  perdidos: number;
+  emAberto: number;
+  receita: number;
 }
 
 interface DashboardData {
@@ -53,6 +68,12 @@ interface DashboardData {
     oportunidadesEmAndamento: Comparative;
     taxaConversao: Comparative;
     clientesEmSilencio: Comparative;
+    ganhos: Comparative;
+    perdidos: Comparative;
+  };
+  pipeline: {
+    selected: string;
+    pipelines: PipelineInfo[];
   };
   period: {
     current: { start: string; end: string };
@@ -63,6 +84,7 @@ interface DashboardData {
     perdas: Array<{ name: string; value: number }>;
     temperatura: Array<{ name: string; value: number }>;
     vendedores: Array<{ name: string; ganhos: number; valor: number; count: number }>;
+    pipeline: Array<{ name: string; total: number; ganhos: number; perdidos: number; receita: number }>;
   };
   tables: {
     rankingVendedores: Array<{
@@ -201,13 +223,17 @@ export default function SVDashboard() {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodOption>('all');
+  const [selectedPipeline, setSelectedPipeline] = useState<PipelineOption>('all');
 
-  const fetchData = async (period: PeriodOption = selectedPeriod) => {
+  const fetchData = async (period: PeriodOption = selectedPeriod, pipeline: PipelineOption = selectedPipeline) => {
     try {
       setLoading(true);
       const params = new URLSearchParams();
       if (period !== 'all') {
         params.set('period', period);
+      }
+      if (pipeline !== 'all') {
+        params.set('pipeline', pipeline);
       }
       const url = `/api/dashboard${params.toString() ? '?' + params.toString() : ''}`;
       const res = await fetch(url);
@@ -237,7 +263,12 @@ export default function SVDashboard() {
 
   const handlePeriodChange = (period: PeriodOption) => {
     setSelectedPeriod(period);
-    fetchData(period);
+    fetchData(period, selectedPipeline);
+  };
+
+  const handlePipelineChange = (pipeline: PipelineOption) => {
+    setSelectedPipeline(pipeline);
+    fetchData(selectedPeriod, pipeline);
   };
 
   useEffect(() => {
@@ -295,6 +326,20 @@ export default function SVDashboard() {
               )}
             </div>
             <div className="flex items-center gap-3">
+              {/* Pipeline Selector */}
+              <select
+                value={selectedPipeline}
+                onChange={(e) => handlePipelineChange(e.target.value as PipelineOption)}
+                className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">Todos os Pipelines</option>
+                {data?.pipeline?.pipelines?.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.total})
+                  </option>
+                ))}
+              </select>
+
               {/* Period Selector */}
               <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
                 <Calendar className="w-4 h-4 text-slate-500 ml-2" />
@@ -350,7 +395,7 @@ export default function SVDashboard() {
               </span>
             )}
           </h2>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
             {/* KPI 1: Receita em Pipeline */}
             <KPICard
               title="Receita em Pipeline"
@@ -381,22 +426,81 @@ export default function SVDashboard() {
 
             {/* KPI 4: Clientes em Silêncio */}
             <KPICard
-              title="Clientes em Silêncio"
+              title="Em Silêncio"
               value={String(kpis?.clientesEmSilencio ?? 0)}
               icon={<AlertTriangle className="w-5 h-5 text-red-500" />}
               color="red-500"
               comparative={comparatives?.clientesEmSilencio}
               inverseBetter
             />
+
+            {/* KPI 5: Ganhos */}
+            <KPICard
+              title="Ganhos"
+              value={String(kpis?.ganhos ?? 0)}
+              icon={<TrendingUp className="w-5 h-5 text-emerald-500" />}
+              color="emerald-500"
+              comparative={comparatives?.ganhos}
+            />
+
+            {/* KPI 6: Perdidos */}
+            <KPICard
+              title="Perdidos"
+              value={String(kpis?.perdidos ?? 0)}
+              icon={<TrendingDown className="w-5 h-5 text-orange-500" />}
+              color="orange-500"
+              comparative={comparatives?.perdidos}
+              inverseBetter
+            />
           </div>
         </section>
 
-        {/* ====== GRÁFICOS (4 cards) ====== */}
+        {/* ====== GRÁFICOS (5 cards) ====== */}
         <section>
           <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4">
             Análises
           </h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            {/* Gráfico 0: Distribuição por Pipeline */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <BarChart className="w-5 h-5 text-indigo-600" />
+                  Pipelines
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {charts?.pipeline && charts.pipeline.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={200}>
+                    <BarChart
+                      data={charts.pipeline}
+                      margin={{ left: 10, right: 10, top: 10 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-20} textAnchor="end" height={60} />
+                      <YAxis tick={{ fontSize: 11 }} />
+                      <Tooltip formatter={(value) => formatCurrency(value as number)} />
+                      <Bar dataKey="receita" fill="#6366f1" name="Receita" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <p className="text-slate-400 text-center py-8">Sem dados de pipeline</p>
+                )}
+                {/* Pipeline Stats */}
+                {data?.pipeline?.pipelines && (
+                  <div className="mt-3 space-y-2">
+                    {data.pipeline.pipelines.map((p) => (
+                      <div key={p.id} className="flex justify-between text-sm">
+                        <span className="text-slate-600">{p.name}</span>
+                        <span className="font-medium">{p.total} opps</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
             {/* Gráfico 1: Funil de Situação */}
             <Card>
               <CardHeader>
