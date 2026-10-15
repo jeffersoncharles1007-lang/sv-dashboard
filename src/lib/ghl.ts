@@ -55,7 +55,7 @@ export async function fetchOpportunities(): Promise<Opportunity[]> {
       method: 'POST',
       headers,
       body: JSON.stringify({
-        locationId: LOCATION_ID,
+        location_id: LOCATION_ID,
         limit: 500,
         page,
       }),

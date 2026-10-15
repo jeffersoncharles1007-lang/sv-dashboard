@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server';
-import { fetchOpportunities, fetchContacts } from '@/lib/ghl';
-import { sql, createSyncLog, finishSyncLog, upsertContact, upsertOpportunity } from '@/lib/postgres';
+import { fetchOpportunities, fetchContacts, fetchConversations } from '@/lib/ghl';
+import { 
+  sql, 
+  createSyncLog, 
+  finishSyncLog, 
+  upsertContact, 
+  upsertOpportunity,
+  upsertConversation 
+} from '@/lib/postgres';
 
 export const maxDuration = 300; // 5 minutes
 
@@ -15,12 +22,14 @@ const CUSTOM_FIELDS_MAP: Record<string, string> = {
 export async function POST() {
   const syncLogId = await createSyncLog('full_sync');
   let totalSynced = 0;
+  const result = { opportunities: 0, contacts: 0, conversations: 0 };
 
   try {
     // Fetch all data from GHL
-    const [opportunities, contacts] = await Promise.all([
+    const [opportunities, contacts, conversations] = await Promise.all([
       fetchOpportunities(),
       fetchContacts(),
+      fetchConversations(),
     ]);
 
     // Sync opportunities
@@ -28,14 +37,20 @@ export async function POST() {
       await upsertOpportunity({
         id: opp.id,
         ghl_id: opp.id,
-        name: opp.name,
-        status: opp.status,
-        pipeline_stage_id: opp.pipelineStageId,
+        name: opp.name || '',
+        status: opp.status || 'open',
+        pipeline_id: opp.pipelineId || '',
+        pipeline_stage_id: opp.pipelineStageId || '',
         monetary_value: opp.monetaryValue || 0,
-        contact_id: opp.contactId,
+        contact_id: opp.contactId || '',
+        assigned_to: opp.assignedTo || '',
+        source: opp.source || '',
+        created_at: opp.createdAt ? new Date(opp.createdAt) : new Date(),
+        updated_at: opp.updatedAt ? new Date(opp.updatedAt) : new Date(),
       });
+      totalSynced++;
     }
-    totalSynced += opportunities.length;
+    result.opportunities = opportunities.length;
 
     // Sync contacts com custom fields
     for (const c of contacts) {
@@ -51,28 +66,45 @@ export async function POST() {
       await upsertContact({
         id: c.id,
         ghl_id: c.id,
-        first_name: c.firstName,
-        last_name: c.lastName,
-        email: c.email,
-        phone: c.phone,
+        first_name: c.firstName || '',
+        last_name: c.lastName || '',
+        email: c.email || '',
+        phone: c.phone || '',
+        tags: c.tags || [],
+        assigned_to: c.assignedTo || '',
+        source: c.source || '',
         situacao_comercial: customFields.situacao_comercial || '',
         resultado_ultimo_contato: customFields.resultado_ultimo_contato || '',
-        lead_prioridade: customFields.lead_prioridade || '',
+        lead_prioridade: customFields.lead_prioridade || 'media',
         segmento_cliente: customFields.segmento_cliente || '',
-        tags: c.tags || [],
       });
+      totalSynced++;
     }
-    totalSynced += contacts.length;
+    result.contacts = contacts.length;
+
+    // Sync conversations
+    for (const conv of conversations) {
+      await upsertConversation({
+        id: conv.id,
+        ghl_id: conv.id,
+        contact_id: conv.contactId || '',
+        contact_name: conv.contactName || '',
+        assigned_to: conv.assignedTo || '',
+        last_message: conv.lastMessage || '',
+        last_message_direction: conv.lastMessageDate > 0 ? 'inbound' : 'outbound',
+        last_message_date: conv.lastMessageDate ? new Date(conv.lastMessageDate) : null,
+        unread_count: conv.unreadCount || 0,
+      });
+      totalSynced++;
+    }
+    result.conversations = conversations.length;
 
     await finishSyncLog(syncLogId, totalSynced, 'success');
 
     return NextResponse.json({
       success: true,
-      synced: {
-        opportunities: opportunities.length,
-        contacts: contacts.length,
-        total: totalSynced,
-      },
+      synced: result,
+      total: totalSynced,
       timestamp: new Date().toISOString(),
     });
 
