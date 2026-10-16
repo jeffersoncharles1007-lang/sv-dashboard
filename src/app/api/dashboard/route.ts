@@ -15,8 +15,6 @@
  * Filtros: período, pipeline
  */
 
-export const dynamic = 'force-dynamic';
-
 import { NextRequest, NextResponse } from 'next/server';
 import { sql, getContacts, getOpportunities, getConversations } from '@/lib/postgres';
 import { PIPELINE_NAMES, STAGE_NAMES, USER_MAP } from '@/lib/constants';
