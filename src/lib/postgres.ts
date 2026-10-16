@@ -258,7 +258,7 @@ export async function getContacts(): Promise<any[]> {
 export async function getOpportunities(): Promise<any[]> {
   return sqlTag`SELECT id, name, status, pipeline_id, pipeline_stage_id, assigned_to,
                    contact_id, source, monetary_value::float as monetary_value,
-                   created_at, updated_at, last_stage_change_at
+                   created_at, updated_at
                    FROM opportunities`;
 }
 
