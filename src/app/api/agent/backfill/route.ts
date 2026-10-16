@@ -307,19 +307,19 @@ export async function POST(request: Request) {
     console.log(`[BACKFILL] Complete: ${results.success}/${results.processed} in ${duration}ms`);
 
     return NextResponse.json({
-      success: true,
       period: { start: startDate.toISOString(), end: endDate.toISOString() },
       ...results,
       duration,
+      success: true,
       timestamp: new Date().toISOString(),
     });
 
   } catch (error) {
     console.error('[BACKFILL] Fatal error:', error);
     return NextResponse.json({
-      success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
       ...results,
+      success: false,
     }, { status: 500 });
   }
 }
