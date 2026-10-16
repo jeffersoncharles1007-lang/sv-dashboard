@@ -78,23 +78,24 @@ def analisar_atendimento(messages, contact_name, vendedor_nome):
     
     conversa = '\n'.join(msg_list)
     
-    prompt = f"""Analise este atendimento de venda de material elétrico e pontue de 0 a 6:
+    prompt = """Analise este atendimento de venda de material elétrico e pontue de 0 a 6:
 
-Vendedor: {vendedor_nome}
-Cliente: {contact_name}
+Vendedor: {}
+Cliente: {}
 
-{conversa}
+{}
 
 Avalie cada passo (0=não fez, 1=fez):
 1. ACOLHIMENTO - Recebeu bem, foi cordial
-2. SONDAGEM - Perguntou para entender a necessidade
+2. SONDAGEM - Perguntou para entender a necessidade  
 3. NECESSIDADE - Identificou corretamente peça/problema
 4. CVB - Apresentou Característica + Vantagem + Benefício
 5. FECHAMENTO - Usou gatilho para fechar
 6. ENCERRAMENTO - Manteve conversa aberta com pergunta
 
-Responda JSON:
-{{"acolhimento":0-1," sondagem":0-1," necessidade":0-1,"cvb":0-1,"fechamento":0-1,"encerramento":0-1,"nota_total":0-6,"observacao":"breve","proximo_passo":"breve"}}"""
+Responda APENAS com JSON válido, sem markdown:
+{{"acolhimento":1,"sondagem":1,"necessidade":1,"cvb":0,"fechamento":0,"encerramento":1}}""".format(
+        vendedor_nome, contact_name, conversa)
 
     for attempt in range(3):
         try:
