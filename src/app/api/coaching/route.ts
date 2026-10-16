@@ -28,7 +28,6 @@ export async function GET(request: NextRequest) {
         AVG(nota_total) as nota_media
       FROM atendimento_audit
       WHERE data >= CURRENT_DATE - INTERVAL '30 days'
-      ${vendedorId ? sql`AND vendedor_id = ${vendedorId}` : sql``}
       GROUP BY vendedor_id, vendedor_nome
       ORDER BY nota_media DESC
     `;
