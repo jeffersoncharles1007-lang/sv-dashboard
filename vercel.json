@@ -2,8 +2,16 @@
   "framework": "nextjs",
   "crons": [
     {
-      "path": "/api/classificar",
+      "path": "/api/sync",
       "schedule": "0 10 * * 1-6"
+    },
+    {
+      "path": "/api/agent",
+      "schedule": "0 19 * * 1-5"
+    },
+    {
+      "path": "/api/audit",
+      "schedule": "0 20 * * 1-5"
     }
   ]
 }

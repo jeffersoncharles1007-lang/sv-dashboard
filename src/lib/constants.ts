@@ -43,3 +43,6 @@ export const STAGE_ORDER = [
 
 export const LOCATION_ID = 'IBE8l3u7AtR6JuNOOagY';
 export const API_BASE = 'https://services.leadconnectorhq.com';
+
+// OpenRouter (para Agente IA)
+export const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';

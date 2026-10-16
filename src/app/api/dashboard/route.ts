@@ -1,132 +1,132 @@
+/**
+ * DASHBOARD API - SV ELÉTRICA
+ * 
+ * KPIs Reais:
+ * - Contatos feitos (primeiro contato por dia)
+ * - Conversas (conversas que aconteceram)
+ * - Interessados (classificação = intenção compra)
+ * - Orçamentos (opps em estágio negociação)
+ * - Vendas ganhas / perdidas
+ * - Conversão por vendedor
+ * - Tempo médio no pipeline
+ * - Motivos de perda
+ * - Pipeline com mais potencial
+ * 
+ * Filtros: período, pipeline
+ */
+
 import { NextRequest, NextResponse } from 'next/server';
-import { sql, getContacts, getOpportunities } from '@/lib/postgres';
-import { PIPELINE_NAMES } from '@/lib/constants';
+import { sql, getContacts, getOpportunities, getConversations } from '@/lib/postgres';
+import { PIPELINE_NAMES, STAGE_NAMES, USER_MAP } from '@/lib/constants';
+
+// ============================================
+// TYPES
+// ============================================
 
 interface KPIData {
+  contatosFeitos: number;
+  conversas: number;
+  interessados: number;
+  perguntas: number;
+  reclamacoes: number;
+  encerramentos: number;
+  silencios: number;
+  orcamentos: number;
+  emAtendimento: number;
+  vendasGanhas: number;
+  vendasPerdidas: number;
+  valorGanho: number;
   receitaPipeline: number;
-  oportunidadesEmAndamento: number;
-  taxaConversao: number;
-  clientesEmSilencio: number;
-  contatosTotal: number;
-  ganhos: number;
-  perdidos: number;
-  orcamentosNovos: number;
+  ticketMedio: number;
 }
 
-function getPeriodDates(period: string, start?: string, end?: string) {
+interface PeriodDates {
+  startDate: Date;
+  endDate: Date;
+  previousStartDate: Date;
+  previousEndDate: Date;
+}
+
+// ============================================
+// HELPERS
+// ============================================
+
+function getPeriodDates(period: string): PeriodDates {
   const now = new Date();
-  let startDate: Date;
-  let endDate: Date;
-  let previousStartDate: Date;
-  let previousEndDate: Date;
+  const startDate = new Date();
+  const endDate = new Date();
+  const previousStartDate = new Date();
+  const previousEndDate = new Date();
 
   switch (period) {
-    case 'week': {
+    case 'today':
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setHours(23, 59, 59, 999);
+      previousStartDate.setDate(now.getDate() - 1);
+      previousStartDate.setHours(0, 0, 0, 0);
+      previousEndDate.setDate(now.getDate() - 1);
+      previousEndDate.setHours(23, 59, 59, 999);
+      break;
+    case 'week':
       const dayOfWeek = now.getDay();
       const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-      startDate = new Date(now);
       startDate.setDate(now.getDate() + mondayOffset);
       startDate.setHours(0, 0, 0, 0);
-      
-      endDate = new Date(startDate);
       endDate.setDate(startDate.getDate() + 6);
       endDate.setHours(23, 59, 59, 999);
-      
-      previousStartDate = new Date(startDate);
       previousStartDate.setDate(startDate.getDate() - 7);
-      previousEndDate = new Date(startDate);
-      previousEndDate.setHours(-1, 59, 59, 999);
+      previousEndDate.setDate(startDate.getDate() - 1);
+      previousEndDate.setHours(23, 59, 59, 999);
       break;
-    }
-    case 'month': {
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-      
-      previousStartDate = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
-      previousEndDate = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+    case 'month':
+      startDate.setDate(1);
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setHours(23, 59, 59, 999);
+      previousStartDate.setMonth(now.getMonth() - 1);
+      previousStartDate.setDate(1);
+      previousStartDate.setHours(0, 0, 0, 0);
+      previousEndDate.setDate(0);
+      previousEndDate.setHours(23, 59, 59, 999);
       break;
-    }
-    case 'quarter': {
+    case 'quarter':
       const currentQuarter = Math.floor(now.getMonth() / 3);
-      startDate = new Date(now.getFullYear(), currentQuarter * 3, 1, 0, 0, 0, 0);
-      endDate = new Date(now.getFullYear(), currentQuarter * 3 + 3, 0, 23, 59, 59, 999);
-      
+      startDate.setMonth(currentQuarter * 3, 1);
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setMonth(currentQuarter * 3 + 3, 0);
+      endDate.setHours(23, 59, 59, 999);
       const prevQuarter = currentQuarter === 0 ? 3 : currentQuarter - 1;
       const prevYear = currentQuarter === 0 ? now.getFullYear() - 1 : now.getFullYear();
-      previousStartDate = new Date(prevYear, prevQuarter * 3, 1, 0, 0, 0, 0);
-      previousEndDate = new Date(prevYear, prevQuarter * 3 + 3, 0, 23, 59, 59, 999);
+      previousStartDate.setFullYear(prevYear, prevQuarter * 3, 1);
+      previousEndDate.setMonth(prevQuarter * 3 + 3, 0);
       break;
-    }
-    case 'custom': {
-      startDate = start ? new Date(start) : new Date(now.getFullYear(), now.getMonth(), 1);
-      endDate = end ? new Date(end) : now;
-      endDate.setHours(23, 59, 59, 999);
-      
-      const diffMs = endDate.getTime() - startDate.getTime();
-      previousEndDate = new Date(startDate.getTime() - 1);
-      previousStartDate = new Date(previousEndDate.getTime() - diffMs);
-      break;
-    }
-    default: {
-      startDate = new Date(0);
-      endDate = new Date();
-      previousStartDate = new Date(0);
-      previousEndDate = new Date(0);
-    }
+    default:
+      startDate.setFullYear(2020, 0, 1);
+      startDate.setHours(0, 0, 0, 0);
+      previousStartDate.setFullYear(2020, 0, 1);
+      previousEndDate.setFullYear(2020, 0, 1);
   }
 
   return { startDate, endDate, previousStartDate, previousEndDate };
 }
 
-function calculateKPIs(
-  opportunities: any[], 
-  contacts: any[], 
-  startDate: Date, 
-  endDate: Date,
-  pipelineFilter?: string
-): KPIData {
-  // Filtrar por pipeline se especificado
-  let filteredOpps = opportunities;
-  if (pipelineFilter && pipelineFilter !== 'all') {
-    filteredOpps = opportunities.filter((o: any) => o.pipeline_id === pipelineFilter);
-  }
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value);
+}
 
-  const periodOpps = filteredOpps.filter((o: any) => {
-    const created = new Date(o.created_at || 0);
-    return created >= startDate && created <= endDate;
-  });
-
-  const totalFechados = filteredOpps.filter((o: any) => ['won', 'lost'].includes(o.status)).length;
-  const totalGanhos = filteredOpps.filter((o: any) => o.status === 'won').length;
-  
-  const receitaPipeline = periodOpps
-    .filter((o: any) => o.status === 'open')
-    .reduce((sum: number, o: any) => sum + (o.monetary_value || 0), 0);
-  
-  const oportunidadesEmAndamento = periodOpps.filter((o: any) => o.status === 'open').length;
-  
-  const fechadosPeriodo = periodOpps.filter((o: any) => ['won', 'lost'].includes(o.status)).length;
-  const ganhosPeriodo = periodOpps.filter((o: any) => o.status === 'won').length;
-  const taxaConversao = fechadosPeriodo > 0 ? (ganhosPeriodo / fechadosPeriodo) * 100 : 0;
-
-  const silencioTags = ['parou responder', 'silencio', 'silêncio', 'sem retorno'];
-  const clientesEmSilencio = contacts.filter((c: any) => {
-    const tags = (c.tags || []).map((t: string) => t.toLowerCase());
-    return tags.some((t: string) => silencioTags.some((st: string) => t.includes(st))) ||
-           c.resultado_ultimo_contato === 'silencio' ||
-           c.resultado_ultimo_contato === 'silêncio';
-  }).length;
-
-  return {
-    receitaPipeline,
-    oportunidadesEmAndamento,
-    taxaConversao: Math.round(taxaConversao),
-    clientesEmSilencio,
-    contatosTotal: contacts.length,
-    ganhos: totalGanhos,
-    perdidos: filteredOpps.filter((o: any) => o.status === 'lost').length,
-    orcamentosNovos: periodOpps.length,
+function getPeriodLabel(period: string): string {
+  const labels: Record<string, string> = {
+    today: 'Hoje',
+    week: 'Esta Semana',
+    month: 'Este Mês',
+    quarter: 'Este Trimestre',
+    all: 'Todo Período',
   };
+  return labels[period] || period;
 }
 
 function calculateChange(current: number, previous: number): { value: number; percentage: number } {
@@ -138,251 +138,262 @@ function calculateChange(current: number, previous: number): { value: number; pe
   return { value: change, percentage };
 }
 
+// ============================================
+// CALCULATE KPIs
+// ============================================
+
+function calculateKPIs(
+  contacts: any[],
+  opportunities: any[],
+  conversations: any[],
+  period: PeriodDates,
+  pipelineFilter: string
+): KPIData {
+  let filteredOpps = opportunities;
+  if (pipelineFilter && pipelineFilter !== 'all') {
+    filteredOpps = opportunities.filter((o: any) => o.pipeline_id === pipelineFilter);
+  }
+
+  const periodOpps = filteredOpps.filter((o: any) => {
+    if (!o.created_at) return false;
+    const created = new Date(o.created_at);
+    return created >= period.startDate && created <= period.endDate;
+  });
+
+  const contatosFeitos = contacts.filter((c: any) => {
+    if (!c.created_at) return false;
+    const created = new Date(c.created_at);
+    return created >= period.startDate && created <= period.endDate;
+  }).length;
+
+  const conversas = conversations.filter((conv: any) => {
+    if (!conv.last_message_date) return false;
+    const msgDate = new Date(conv.last_message_date);
+    return msgDate >= period.startDate && msgDate <= period.endDate;
+  }).length;
+
+  const contatosComClass = contacts.filter((c: any) => c.resultado_ultimo_contato);
+  const interessados = contatosComClass.filter((c: any) => c.resultado_ultimo_contato === 'intencao_compra').length;
+  const perguntas = contatosComClass.filter((c: any) => c.resultado_ultimo_contato === 'pergunta').length;
+  const reclamacoes = contatosComClass.filter((c: any) => c.resultado_ultimo_contato === 'reclamacao').length;
+  const encerramentos = contatosComClass.filter((c: any) => c.resultado_ultimo_contato === 'encerramento').length;
+  const silencios = contatosComClass.filter((c: any) => c.resultado_ultimo_contato === 'silencio').length;
+
+  const orcamentos = filteredOpps.filter((o: any) => o.pipeline_stage_id === '8321615c-2a8a-4636-b6a3-599aad08c1a9').length;
+  const emAtendimento = filteredOpps.filter((o: any) => o.pipeline_stage_id === 'c2503848-5cb1-41b7-abea-8e6ca33538ef').length;
+
+  const vendasGanhas = filteredOpps.filter((o: any) => o.status === 'won').length;
+  const vendasPerdidas = filteredOpps.filter((o: any) => o.status === 'lost').length;
+  const valorGanho = filteredOpps.filter((o: any) => o.status === 'won')
+    .reduce((sum: number, o: any) => sum + (o.monetary_value || 0), 0);
+
+  const receitaPipeline = filteredOpps.filter((o: any) => o.status === 'open')
+    .reduce((sum: number, o: any) => sum + (o.monetary_value || 0), 0);
+
+  const ticketMedio = vendasGanhas > 0 ? valorGanho / vendasGanhas : 0;
+
+  return {
+    contatosFeitos, conversas, interessados, perguntas, reclamacoes, encerramentos,
+    silencios, orcamentos, emAtendimento, vendasGanhas, vendasPerdidas,
+    valorGanho, receitaPipeline, ticketMedio,
+  };
+}
+
+// ============================================
+// ANALYSES
+// ============================================
+
+function calculateConversionByVendor(opportunities: any[]): any[] {
+  const vendedorStats: Record<string, any> = {};
+
+  for (const opp of opportunities) {
+    const vendedor = opp.assigned_to || 'unknown';
+    const nome = USER_MAP[vendedor] || vendedor;
+
+    if (!vendedorStats[vendedor]) {
+      vendedorStats[vendedor] = { nome, ganhos: 0, perdidos: 0, emAberto: 0, valorGanho: 0, taxaConversao: 0 };
+    }
+
+    if (opp.status === 'won') {
+      vendedorStats[vendedor].ganhos++;
+      vendedorStats[vendedor].valorGanho += opp.monetary_value || 0;
+    } else if (opp.status === 'lost') {
+      vendedorStats[vendedor].perdidos++;
+    } else if (opp.status === 'open') {
+      vendedorStats[vendedor].emAberto++;
+    }
+  }
+
+  for (const v of Object.values(vendedorStats)) {
+    const total = v.ganhos + v.perdidos;
+    v.taxaConversao = total > 0 ? Math.round((v.ganhos / total) * 100) : 0;
+  }
+
+  return Object.values(vendedorStats).sort((a: any, b: any) => b.valorGanho - a.valorGanho);
+}
+
+function calculatePipelinePotential(opportunities: any[]): any[] {
+  const pipelineStats: Record<string, any> = {};
+
+  for (const opp of opportunities) {
+    const pipelineId = opp.pipeline_id || 'unknown';
+    const nome = PIPELINE_NAMES[pipelineId] || pipelineId;
+
+    if (!pipelineStats[pipelineId]) {
+      pipelineStats[pipelineId] = { id: pipelineId, nome, total: 0, abertos: 0, ganhos: 0, perdidos: 0, receita: 0 };
+    }
+
+    pipelineStats[pipelineId].total++;
+    if (opp.status === 'open') {
+      pipelineStats[pipelineId].abertos++;
+      pipelineStats[pipelineId].receita += opp.monetary_value || 0;
+    } else if (opp.status === 'won') {
+      pipelineStats[pipelineId].ganhos++;
+    } else if (opp.status === 'lost') {
+      pipelineStats[pipelineId].perdidos++;
+    }
+  }
+
+  return Object.values(pipelineStats).sort((a: any, b: any) => b.receita - a.receita);
+}
+
+function calculateLossReasons(contacts: any[]): any[] {
+  const reasons: Record<string, number> = {
+    'concorrencia': 0, 'preco': 0, 'prazo_pagamento': 0, 'prazo_entrega': 0,
+    'sem_interesse': 0, 'sem_resposta': 0, 'outros': 0,
+  };
+
+  for (const contact of contacts) {
+    const tags = (contact.tags || []).map((t: string) => t.toLowerCase());
+    
+    if (tags.some((t: string) => t.includes('perda concorrencia'))) reasons['concorrencia']++;
+    else if (tags.some((t: string) => t.includes('perda preco') || t.includes('perda preço'))) reasons['preco']++;
+    else if (tags.some((t: string) => t.includes('perda prazo pagamento'))) reasons['prazo_pagamento']++;
+    else if (tags.some((t: string) => t.includes('perda prazo entrega'))) reasons['prazo_entrega']++;
+    else if (tags.some((t: string) => t.includes('perda sem interesse'))) reasons['sem_interesse']++;
+    else if (tags.some((t: string) => t.includes('perda sem resposta'))) reasons['sem_resposta']++;
+    else if (tags.some((t: string) => t.includes('perda'))) reasons['outros']++;
+  }
+
+  const total = Object.values(reasons).reduce((a, b) => a + b, 0);
+
+  return Object.entries(reasons)
+    .filter(([_, count]) => count > 0)
+    .map(([name, count]) => ({
+      motivo: name.replace('_', ' '),
+      count,
+      percentage: total > 0 ? Math.round((count / total) * 100) : 0,
+    }))
+    .sort((a, b) => b.count - a.count);
+}
+
+function calculateAvgTimeInPipeline(opportunities: any[]): any[] {
+  const stageTimes: Record<string, any> = {};
+
+  for (const opp of opportunities) {
+    if (opp.status !== 'open' || !opp.created_at || !opp.updated_at) continue;
+    
+    const created = new Date(opp.created_at);
+    const updated = new Date(opp.updated_at);
+    const days = Math.floor((updated.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
+    
+    const stageId = opp.pipeline_stage_id || 'unknown';
+    if (!stageTimes[stageId]) stageTimes[stageId] = { totalDays: 0, count: 0 };
+    stageTimes[stageId].totalDays += days;
+    stageTimes[stageId].count++;
+  }
+
+  return Object.entries(stageTimes).map(([stageId, data]: [string, any]) => ({
+    stage: STAGE_NAMES[stageId] || stageId,
+    avgDays: data.count > 0 ? Math.round(data.totalDays / data.count) : 0,
+    count: data.count,
+  })).sort((a: any, b: any) => b.avgDays - a.avgDays);
+}
+
+// ============================================
+// MAIN API
+// ============================================
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period') || 'all';
     const pipeline = searchParams.get('pipeline') || 'all';
-    const start = searchParams.get('start') || undefined;
-    const end = searchParams.get('end') || undefined;
 
-    const { startDate, endDate, previousStartDate, previousEndDate } = getPeriodDates(period, start, end);
+    const periodDates = getPeriodDates(period);
 
-    // Fetch all data from Postgres
-    const [opportunities, contacts] = await Promise.all([
-      getOpportunities(),
+    const [contacts, opportunities, conversations] = await Promise.all([
       getContacts(),
+      getOpportunities(),
+      getConversations(),
     ]);
 
-    // Calcular KPIs do período atual
-    const kpis = calculateKPIs(opportunities, contacts, startDate, endDate, pipeline);
+    const kpis = calculateKPIs(contacts, opportunities, conversations, periodDates, pipeline);
     
-    // Calcular KPIs do período anterior
-    const previousKPIs = calculateKPIs(opportunities, contacts, previousStartDate, previousEndDate, pipeline);
+    const previousKPIs = calculateKPIs(contacts, opportunities, conversations, {
+      startDate: periodDates.previousStartDate,
+      endDate: periodDates.previousEndDate,
+      previousStartDate: new Date(0),
+      previousEndDate: new Date(0),
+    }, pipeline);
 
-    // Calcular comparativos
-    const comparatives = {
-      receitaPipeline: calculateChange(kpis.receitaPipeline, previousKPIs.receitaPipeline),
-      oportunidadesEmAndamento: calculateChange(kpis.oportunidadesEmAndamento, previousKPIs.oportunidadesEmAndamento),
-      taxaConversao: calculateChange(kpis.taxaConversao, previousKPIs.taxaConversao),
-      clientesEmSilencio: {
-        ...calculateChange(kpis.clientesEmSilencio, previousKPIs.clientesEmSilencio),
-        betterWhen: 'lower',
-      },
-      ganhos: calculateChange(kpis.ganhos, previousKPIs.ganhos),
-      perdidos: {
-        ...calculateChange(kpis.perdidos, previousKPIs.perdidos),
-        betterWhen: 'lower',
-      },
+    const totalFechados = kpis.vendasGanhas + kpis.vendasPerdidas;
+    const prevTotalFechados = previousKPIs.vendasGanhas + previousKPIs.vendasPerdidas;
+    const taxaConversao = totalFechados > 0 ? Math.round((kpis.vendasGanhas / totalFechados) * 100) : 0;
+    const prevTaxaConversao = prevTotalFechados > 0 ? Math.round((previousKPIs.vendasGanhas / prevTotalFechados) * 100) : 0;
+
+    const changes = {
+      contatosFeitos: calculateChange(kpis.contatosFeitos, previousKPIs.contatosFeitos),
+      conversas: calculateChange(kpis.conversas, previousKPIs.conversas),
+      interessados: calculateChange(kpis.interessados, previousKPIs.interessados),
+      vendasGanhas: calculateChange(kpis.vendasGanhas, previousKPIs.vendasGanhas),
+      valorGanho: calculateChange(kpis.valorGanho, previousKPIs.valorGanho),
+      taxaConversao: calculateChange(taxaConversao, prevTaxaConversao),
     };
 
-    // Filtrar opportunities por pipeline
-    let filteredOpps = opportunities;
-    if (pipeline !== 'all') {
-      filteredOpps = opportunities.filter((o: any) => o.pipeline_id === pipeline);
-    }
-
-    // ===== DADOS POR PIPELINE =====
-    const pipelineStats = Object.entries(PIPELINE_NAMES).map(([id, name]) => {
-      const opps = opportunities.filter((o: any) => o.pipeline_id === id);
-      return {
-        id,
-        name,
-        total: opps.length,
-        ganhos: opps.filter((o: any) => o.status === 'won').length,
-        perdidos: opps.filter((o: any) => o.status === 'lost').length,
-        emAberto: opps.filter((o: any) => o.status === 'open').length,
-        receita: opps.filter((o: any) => o.status === 'open')
-          .reduce((sum: number, o: any) => sum + (o.monetary_value || 0), 0),
-      };
-    });
-
-    // ===== GRÁFICO 1: Funil de Situação =====
-    const situacaoCount: Record<string, number> = {};
-    for (const c of contacts) {
-      const situacao = c.situacao_comercial || 'Não definido';
-      situacaoCount[situacao] = (situacaoCount[situacao] || 0) + 1;
-    }
-    const funnelSituacao = Object.entries(situacaoCount)
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count);
-
-    // ===== GRÁFICO 2: Por que Perdeu (Pizza) =====
-    const perdaTags = ['perda concorrencia', 'perda preco', 'perda preço', 'perda prazo', 'desistiu'];
-    const motivosPerda: Record<string, number> = {};
-    
-    for (const c of contacts) {
-      const tags = (c.tags || []).map((t: string) => t.toLowerCase());
-      for (const tag of tags) {
-        for (const motivo of perdaTags) {
-          if (tag.includes(motivo.toLowerCase())) {
-            motivosPerda[motivo] = (motivosPerda[motivo] || 0) + 1;
-            break;
-          }
-        }
-      }
-    }
-    const chartPerdas = Object.entries(motivosPerda)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value);
-
-    // ===== GRÁFICO 3: Temperatura da Carteira =====
-    const temperatura: Record<string, number> = {
-      'Quente': 0,
-      'Morno': 0,
-      'Frio': 0,
-      'Parou': 0,
-    };
-    
-    for (const c of contacts) {
-      const tags = (c.tags || []).map((t: string) => t.toLowerCase());
-      if (tags.some((t: string) => t.includes('quente'))) temperatura['Quente']++;
-      else if (tags.some((t: string) => t.includes('morno'))) temperatura['Morno']++;
-      else if (tags.some((t: string) => t.includes('frio'))) temperatura['Frio']++;
-      if (tags.some((t: string) => t.includes('parou responder'))) temperatura['Parou']++;
-    }
-    const chartTemperatura = Object.entries(temperatura)
-      .map(([name, value]) => ({ name, value }))
-      .filter(d => d.value > 0);
-
-    // ===== GRÁFICO 4: Performance por Pipeline (novo) =====
-    const chartPipeline = pipelineStats.map(p => ({
-      name: p.name,
-      total: p.total,
-      ganhos: p.ganhos,
-      perdidos: p.perdidos,
-      receita: p.receita,
-    }));
-
-    // ===== TABELA 1: Ranking Vendedores =====
-    const vendedores = ['emily', 'katherine', 'eduardo-pereira', 'crisostomo', 'angelo'];
-    const desempenhoVendedores: Record<string, { ganhos: number; valor: number; count: number }> = {};
-    
-    for (const v of vendedores) {
-      desempenhoVendedores[v] = { ganhos: 0, valor: 0, count: 0 };
-    }
-    
-    for (const c of contacts) {
-      const tags = (c.tags || []).map((t: string) => t.toLowerCase());
-      for (const tag of tags) {
-        for (const vendedor of vendedores) {
-          if (tag.includes(vendedor.toLowerCase())) {
-            desempenhoVendedores[vendedor].count++;
-            break;
-          }
-        }
-      }
-    }
-    
-    for (const opp of filteredOpps) {
-      const contact = contacts.find((c: any) => c.id === opp.contact_id);
-      if (!contact) continue;
-      
-      const tags = (contact.tags || []).map((t: string) => t.toLowerCase());
-      for (const tag of tags) {
-        for (const vendedor of vendedores) {
-          if (tag.includes(vendedor.toLowerCase())) {
-            if (opp.status === 'won') {
-              desempenhoVendedores[vendedor].ganhos++;
-              desempenhoVendedores[vendedor].valor += opp.monetary_value || 0;
-            }
-            break;
-          }
-        }
-      }
-    }
-    
-    const chartVendedores = Object.entries(desempenhoVendedores)
-      .map(([name, data]) => ({ 
-        name, 
-        ganhos: data.ganhos, 
-        valor: data.valor,
-        count: data.count,
-      }))
-      .sort((a, b) => b.valor - a.valor);
-
-    const rankingVendedores = chartVendedores.map((v, i) => ({
-      rank: i + 1,
-      nome: v.name,
-      ganhos: v.ganhos,
-      valorTotal: v.valor,
-      clientes: v.count,
-      taxaConversao: v.count > 0 ? Math.round((v.ganhos / v.count) * 100) : 0,
-    }));
-
-    // ===== TABELA 2: Clientes em Silêncio (prioridade) =====
-    const clientesSilencio = contacts
-      .filter((c: any) => {
-        const tags = (c.tags || []).map((t: string) => t.toLowerCase());
-        return tags.some((t: string) => ['parou responder', 'silencio', 'silêncio', 'sem retorno'].some(st => t.includes(st))) ||
-               c.resultado_ultimo_contato === 'silencio' ||
-               c.resultado_ultimo_contato === 'silêncio';
-      })
-      .map((c: any) => ({
-        id: c.id,
-        nome: `${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Sem nome',
-        email: c.email || '',
-        telefone: c.phone || '',
-        prioridade: c.lead_prioridade || 'media',
-        situacao: c.situacao_comercial || 'Não definido',
-        tags: c.tags || [],
-      }))
-      .sort((a: any, b: any) => {
-        const p: Record<string, number> = { alta: 0, media: 1, baixa: 2 };
-        return (p[a.prioridade] ?? 1) - (p[b.prioridade] ?? 1);
-      })
-      .slice(0, 20);
-
-    // ===== TABELA 3: Detalhamento de Perdas =====
-    const totalFechadosGeral = filteredOpps.filter((o: any) => ['won', 'lost'].includes(o.status)).length;
-    const detalhamentoPerdas = Object.entries(motivosPerda)
-      .map(([motivo, count]) => ({
-        motivo,
-        count,
-        percentage: totalFechadosGeral > 0 ? Math.round((count / totalFechadosGeral) * 100) : 0,
-      }))
-      .sort((a, b) => b.count - a.count);
+    const conversionByVendor = calculateConversionByVendor(opportunities);
+    const pipelinePotential = calculatePipelinePotential(opportunities);
+    const lossReasons = calculateLossReasons(contacts);
+    const avgTimeInPipeline = calculateAvgTimeInPipeline(opportunities);
 
     return NextResponse.json({
-      kpis,
-      kpisPrevious: previousKPIs,
-      comparatives,
+      success: true,
       period: {
-        current: { start: startDate.toISOString(), end: endDate.toISOString() },
-        previous: { start: previousStartDate.toISOString(), end: previousEndDate.toISOString() },
+        current: { start: periodDates.startDate.toISOString(), end: periodDates.endDate.toISOString() },
+        previous: { start: periodDates.previousStartDate.toISOString(), end: periodDates.previousEndDate.toISOString() },
+        label: getPeriodLabel(period),
       },
       pipeline: {
         selected: pipeline,
-        pipelines: pipelineStats,
+        pipelines: pipelinePotential,
       },
-      charts: {
-        funnelSituacao,
-        perdas: chartPerdas,
-        temperatura: chartTemperatura,
-        vendedores: chartVendedores,
-        pipeline: chartPipeline,
+      kpis: {
+        ...kpis,
+        valorGanhoFormatted: formatCurrency(kpis.valorGanho),
+        receitaPipelineFormatted: formatCurrency(kpis.receitaPipeline),
+        ticketMedioFormatted: formatCurrency(kpis.ticketMedio),
+        taxaConversao,
       },
-      tables: {
-        rankingVendedores,
-        clientesSilencio,
-        detalhamentoPerdas,
+      changes,
+      analyses: {
+        conversionByVendor,
+        pipelinePotential,
+        lossReasons,
+        avgTimeInPipeline,
       },
       meta: {
         totalContacts: contacts.length,
-        totalOpportunities: filteredOpps.length,
-        totalGanhos: filteredOpps.filter((o: any) => o.status === 'won').length,
-        totalPerdidos: filteredOpps.filter((o: any) => o.status === 'lost').length,
-        lastSync: opportunities[0]?.last_synced_at || null,
-        periodSelected: period,
-        pipelineSelected: pipeline,
+        totalOpportunities: opportunities.length,
+        totalConversations: conversations.length,
+        timestamp: new Date().toISOString(),
       },
     });
 
   } catch (error) {
     console.error('Dashboard API error:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Erro desconhecido' },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }, { status: 500 });
   }
 }
