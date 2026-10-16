@@ -168,21 +168,26 @@ function generateInsights(coaching: any[], stats: any): any[] {
   }
 
   // Passo mais fraco
-  const passoMaisFraco = coaching.reduce((acc: any, curr: any) => {
+  let passoMaisFracoPct = 100;
+  let passoMaisFracoNome = '';
+  let passoMaisFracoVendedor = '';
+  
+  for (const curr of coaching) {
     const passos = curr.passos;
-    const menor = Object.entries(passos).reduce((a: any, b: any) => 
-      a[1] < b[1] ? a : b
-    );
-    if (!acc.pct || menor[1] < acc.pct) {
-      return { nome: menor[0], pct: menor[1], vendedor: curr.vendedorNome };
+    for (const [key, value] of Object.entries(passos)) {
+      const numValue = Number(value) || 0;
+      if (numValue < passoMaisFracoPct) {
+        passoMaisFracoPct = numValue;
+        passoMaisFracoNome = key;
+        passoMaisFracoVendedor = curr.vendedorNome;
+      }
     }
-    return acc;
-  }, { pct: null as number | null, nome: '', vendedor: '' });
+  }
 
-  if (passoMaisFraco.pct && passoMaisFraco.pct < 50) {
+  if (passoMaisFracoPct < 50) {
     insights.push({
       tipo: 'melhoria',
-      mensagem: `Passo "${passoMaisFraco.nome}" está com ${passoMaisFraco.pct}% em ${passoMaisFraco.vendedor}. Priorizar treinamento.`
+      mensagem: `Passo "${passoMaisFracoNome}" está com ${passoMaisFracoPct}% em ${passoMaisFracoVendedor}. Priorizar treinamento.`
     });
   }
 

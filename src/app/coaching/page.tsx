@@ -9,6 +9,7 @@ import {
 import { Users, TrendingUp, AlertTriangle, CheckCircle, Target, Lightbulb } from 'lucide-react';
 
 interface CoachingData {
+  success?: boolean;
   stats: {
     totalAuditado: number;
     notaGeral: string;
@@ -183,7 +184,6 @@ export default function CoachingPage() {
                   <YAxis domain={[0, 6]} stroke="#9ca3af" />
                   <Tooltip 
                     contentStyle={{ backgroundColor: '#1f2937', border: 'none' }}
-                    formatter={(value: number) => [`${value}/6`, 'Nota']}
                   />
                   <Bar dataKey="nota" radius={[4, 4, 0, 0]}>
                     {chartData.map((entry: any, index: number) => (
@@ -250,7 +250,7 @@ export default function CoachingPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {coachingData.recommendations.map((rec, i) => (
+              {coachingData.recommendations.map((rec: string, i: number) => (
                 <div key={i} className="flex items-start gap-3 bg-yellow-900/20 border border-yellow-600/30 rounded-lg p-4">
                   <Lightbulb className="w-5 h-5 text-yellow-500 mt-0.5 flex-shrink-0" />
                   <p className="text-gray-300">{rec}</p>
@@ -271,7 +271,7 @@ export default function CoachingPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {coachingData.exemplos.melhores.map((ex, i) => (
+              {coachingData.exemplos.melhores.map((ex: any, i: number) => (
                 <div key={i} className="bg-green-900/20 rounded-lg p-4 mb-3 last:mb-0">
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-semibold">{ex.vendedor}</span>
@@ -293,7 +293,7 @@ export default function CoachingPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {coachingData.exemplos.piores.map((ex, i) => (
+              {coachingData.exemplos.piores.map((ex: any, i: number) => (
                 <div key={i} className="bg-red-900/20 rounded-lg p-4 mb-3 last:mb-0">
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-semibold">{ex.vendedor}</span>
