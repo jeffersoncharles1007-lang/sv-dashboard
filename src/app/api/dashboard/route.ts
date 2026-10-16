@@ -186,11 +186,15 @@ function calculateKPIs(
 
   const vendasGanhas = filteredOpps.filter((o: any) => o.status === 'won').length;
   const vendasPerdidas = filteredOpps.filter((o: any) => o.status === 'lost').length;
-  const valorGanho = filteredOpps.filter((o: any) => o.status === 'won')
-    .reduce((sum: number, o: any) => sum + (o.monetary_value || 0), 0);
+  
+  // Garantir que monetary_value é número
+  const valorGanho = filteredOpps
+    .filter((o: any) => o.status === 'won')
+    .reduce((sum: number, o: any) => sum + (Number(o.monetary_value) || 0), 0);
 
-  const receitaPipeline = filteredOpps.filter((o: any) => o.status === 'open')
-    .reduce((sum: number, o: any) => sum + (o.monetary_value || 0), 0);
+  const receitaPipeline = filteredOpps
+    .filter((o: any) => o.status === 'open')
+    .reduce((sum: number, o: any) => sum + (Number(o.monetary_value) || 0), 0);
 
   const ticketMedio = vendasGanhas > 0 ? valorGanho / vendasGanhas : 0;
 
@@ -218,7 +222,7 @@ function calculateConversionByVendor(opportunities: any[]): any[] {
 
     if (opp.status === 'won') {
       vendedorStats[vendedor].ganhos++;
-      vendedorStats[vendedor].valorGanho += opp.monetary_value || 0;
+      vendedorStats[vendedor].valorGanho += Number(opp.monetary_value) || 0;
     } else if (opp.status === 'lost') {
       vendedorStats[vendedor].perdidos++;
     } else if (opp.status === 'open') {
@@ -229,6 +233,7 @@ function calculateConversionByVendor(opportunities: any[]): any[] {
   for (const v of Object.values(vendedorStats)) {
     const total = v.ganhos + v.perdidos;
     v.taxaConversao = total > 0 ? Math.round((v.ganhos / total) * 100) : 0;
+    v.valorGanho = Number(v.valorGanho) || 0;
   }
 
   return Object.values(vendedorStats).sort((a: any, b: any) => b.valorGanho - a.valorGanho);
@@ -248,7 +253,7 @@ function calculatePipelinePotential(opportunities: any[]): any[] {
     pipelineStats[pipelineId].total++;
     if (opp.status === 'open') {
       pipelineStats[pipelineId].abertos++;
-      pipelineStats[pipelineId].receita += opp.monetary_value || 0;
+      pipelineStats[pipelineId].receita += Number(opp.monetary_value) || 0;
     } else if (opp.status === 'won') {
       pipelineStats[pipelineId].ganhos++;
     } else if (opp.status === 'lost') {
