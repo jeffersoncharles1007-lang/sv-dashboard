@@ -11,18 +11,7 @@ import { USER_MAP } from '@/lib/constants';
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const period = searchParams.get('period') || 'today';
     const vendedorId = searchParams.get('vendedor') || null;
-
-    // Data filter
-    let dateFilter = 'CURRENT_DATE';
-    if (period === 'week') {
-      dateFilter = "CURRENT_DATE - INTERVAL '7 days'";
-    } else if (period === 'month') {
-      dateFilter = "CURRENT_DATE - INTERVAL '30 days'";
-    } else if (period === 'all') {
-      dateFilter = "'2020-01-01'";
-    }
 
     // Query de coaching por vendedor
     const coachingQuery = sql`
@@ -38,7 +27,7 @@ export async function GET(request: NextRequest) {
         AVG(passo_encerramento) * 100 as encerramento_pct,
         AVG(nota_total) as nota_media
       FROM atendimento_audit
-      WHERE data >= ${dateFilter}::date
+      WHERE data >= CURRENT_DATE - INTERVAL '30 days'
       ${vendedorId ? sql`AND vendedor_id = ${vendedorId}` : sql``}
       GROUP BY vendedor_id, vendedor_nome
       ORDER BY nota_media DESC
@@ -47,29 +36,29 @@ export async function GET(request: NextRequest) {
     // Exemplos de atendimento (melhor e pior)
     const exemplosQuery = sql`
       SELECT 
-        a.vendedor_nome,
-        a.nota_total,
-        a.observacao,
-        a.proximo_passo,
-        a.contact_name,
-        a.data
-      FROM atendimento_audit a
-      WHERE a.data >= ${dateFilter}::date
-      ORDER BY a.nota_total DESC
+        vendedor_nome,
+        nota_total,
+        observacao,
+        proximo_passo,
+        contact_name,
+        data::text as data
+      FROM atendimento_audit
+      WHERE data >= CURRENT_DATE - INTERVAL '7 days'
+      ORDER BY nota_total DESC
       LIMIT 3
     `;
 
     const piorQuery = sql`
       SELECT 
-        a.vendedor_nome,
-        a.nota_total,
-        a.observacao,
-        a.proximo_passo,
-        a.contact_name,
-        a.data
-      FROM atendimento_audit a
-      WHERE a.data >= ${dateFilter}::date
-      ORDER BY a.nota_total ASC
+        vendedor_nome,
+        nota_total,
+        observacao,
+        proximo_passo,
+        contact_name,
+        data::text as data
+      FROM atendimento_audit
+      WHERE data >= CURRENT_DATE - INTERVAL '7 days'
+      ORDER BY nota_total ASC
       LIMIT 3
     `;
 
@@ -78,7 +67,7 @@ export async function GET(request: NextRequest) {
       SELECT COUNT(*) as count
       FROM classification_logs
       WHERE classificacao = 'silencio'
-      AND created_at >= ${dateFilter}::date
+      AND created_at >= CURRENT_DATE - INTERVAL '7 days'
     `;
 
     // Estatísticas gerais
@@ -88,7 +77,7 @@ export async function GET(request: NextRequest) {
         AVG(nota_total) as nota_geral,
         COUNT(CASE WHEN nota_total >= 4 THEN 1 END) as acima_meta
       FROM atendimento_audit
-      WHERE data >= ${dateFilter}::date
+      WHERE data >= CURRENT_DATE - INTERVAL '7 days'
     `;
 
     const [coaching, melhores, piores, silencio, stats] = await Promise.all([
@@ -104,7 +93,6 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      period,
       stats: {
         totalAuditado: Number(stats[0]?.total_auditado || 0),
         notaGeral: Number(stats[0]?.nota_geral || 0).toFixed(1),
