@@ -11,10 +11,10 @@
 import { NextResponse } from 'next/server';
 import { sql, logClassification } from '@/lib/postgres';
 import ghl from '@/lib/ghl-unified';
-import { OPENROUTER_API_KEY } from '@/lib/constants';
 
-// Configuração OpenRouter
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+// Configuração API kpalabz
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || 'sk-kpa-05e4a8413c78de7308568ec219b86e3820038e9c2f8e5c9db3bc8ca4ef2742c7';
+const API_BASE = 'https://api.kpalabz.com/v1';
 
 interface ClassificationResult {
   resultado: 'pergunta' | 'reclamacao' | 'intencao_compra' | 'encerramento' | 'silencio';
@@ -69,7 +69,7 @@ REGRAS:
 - baixa: apenas pesquisando, sem urgência`;
 
   try {
-    const response = await fetch(OPENROUTER_URL, {
+    const response = await fetch(`${API_BASE}/chat/completions`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
@@ -78,7 +78,7 @@ REGRAS:
         'X-Title': 'SV Dashboard Agent',
       },
       body: JSON.stringify({
-        model: 'anthropic/claude-3-haiku-20240307',
+        model: 'gpt-4o-mini',
         messages: [
           { role: 'user', content: prompt }
         ],
