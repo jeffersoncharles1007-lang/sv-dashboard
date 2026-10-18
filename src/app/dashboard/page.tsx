@@ -3,6 +3,9 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { KpiCard, KpiGrid } from '@/components/ui/kpi-card';
+import { DataLoader, ChartSkeleton } from '@/components/ui/data-loader';
+import { formatCompactCurrency } from '@/lib/utils';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell
@@ -46,16 +49,6 @@ const COLORS = {
   orange: '#f97316',
 };
 
-function formatCurrency(value: number): string {
-  if (value >= 1000000) return `R$ ${(value / 1000000).toFixed(1)}M`;
-  if (value >= 1000) return `R$ ${(value / 1000).toFixed(0)}K`;
-  return `R$ ${value.toFixed(0)}`;
-}
-
-function formatPercent(value: number): string {
-  return `${value.toFixed(1)}%`;
-}
-
 function getStatusColor(value: number, target: number): string {
   const pct = (value / target) * 100;
   if (pct >= 70) return COLORS.success;
@@ -63,46 +56,10 @@ function getStatusColor(value: number, target: number): string {
   return COLORS.danger;
 }
 
-function KpiCard({ title, value, target, format, icon: Icon, trend }: any) {
-  const color = getStatusColor(value, target);
-  const pct = target > 0 ? ((value / target) * 100).toFixed(0) : '0';
-  const isPositive = trend > 0;
-
-  return (
-    <Card className="bg-slate-800/50 border-slate-700">
-      <CardContent className="p-6">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <p className="text-slate-400 text-sm mb-1">{title}</p>
-            <p className="text-3xl font-bold text-white">{format === 'currency' ? formatCurrency(value) : format === 'percent' ? formatPercent(value) : value}</p>
-            <div className="flex items-center gap-2 mt-2">
-              <span className="text-xs text-slate-500">vs Meta: {format === 'percent' ? formatPercent(target) : formatCurrency(target)}</span>
-              <Badge className={`text-xs ${isPositive ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-                {isPositive ? '+' : ''}{trend.toFixed(1)}%
-              </Badge>
-            </div>
-          </div>
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${color}20` }}>
-            <Icon className="w-6 h-6" style={{ color }} />
-          </div>
-        </div>
-        <div className="mt-4">
-          <div className="flex justify-between text-xs text-slate-500 mb-1">
-            <span>Progresso</span>
-            <span>{pct}%</span>
-          </div>
-          <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
-            <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(Number(pct), 100)}%`, backgroundColor: color }} />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [filters, setFilters] = useState<DashboardFilters>({
     period: '30d',
     pipeline: 'all',
@@ -116,44 +73,38 @@ export default function DashboardPage() {
       vendedor: filters.vendedor
     });
     fetch(`/api/dashboard-full?${params.toString()}`)
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error('Failed');
+        return res.json();
+      })
       .then(d => {
         setData(d);
-        setLoading(false);
+        setError(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => setError(true))
+      .finally(() => setLoading(false));
   }, [filters]);
 
   const updateFilter = (key: keyof DashboardFilters, value: string) => {
     setFilters(prev => ({ ...prev, [key]: value }));
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full" />
-      </div>
-    );
-  }
+  // Determine data status for DataLoader
+  const dataStatus = loading ? 'loading' : error ? 'error' : !data ? 'empty' : 'success';
 
-  if (!data) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <p className="text-slate-400">Sem dados disponíveis</p>
-      </div>
-    );
-  }
+  // Show header even when loading/error
+  const lastUpdated = data?.ultimoSync ? new Date(data.ultimoSync).toLocaleString('pt-BR') : null;
 
   return (
     <div className="min-h-screen bg-slate-950 p-6">
       <div className="max-w-7xl mx-auto">
-        
+
         {/* Header + Filters */}
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-bold text-white">Visão Geral</h1>
             <p className="text-slate-400 text-sm mt-1">
-              Última atualização: {new Date(data.ultimoSync).toLocaleString('pt-BR')}
+              {lastUpdated && `Última atualização: ${lastUpdated}`}
             </p>
           </div>
           
@@ -206,153 +157,161 @@ export default function DashboardPage() {
         </div>
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-4 gap-6 mb-8">
-          <KpiCard
-            title="Receita em Pipeline"
-            value={data.kpis.receitaPipeline}
-            target={data.kpis.metaReceita}
-            format="currency"
-            icon={DollarSign}
-            trend={12.5}
-          />
-          <KpiCard
-            title="Vendas Ganhas"
-            value={data.kpis.vendasGanhas}
-            target={20}
-            format="number"
-            icon={CheckCircle}
-            trend={8.3}
-          />
-          <KpiCard
-            title="Taxa de Conversão"
-            value={data.kpis.taxaConversao}
-            target={data.kpis.metaConversao}
-            format="percent"
-            icon={Target}
-            trend={-2.1}
-          />
-          <KpiCard
-            title="Ticket Médio"
-            value={data.kpis.ticketMedio}
-            target={5000}
-            format="currency"
-            icon={TrendingUp}
-            trend={5.7}
-          />
-        </div>
+        <DataLoader status={dataStatus} lastUpdated={lastUpdated || undefined}>
+          {data && (
+            <KpiGrid columns={4}>
+              <KpiCard
+                title="Receita em Pipeline"
+                value={data.kpis.receitaPipeline}
+                target={data.kpis.metaReceita}
+                format="currency"
+                icon={DollarSign}
+                trend={12.5}
+              />
+              <KpiCard
+                title="Vendas Ganhas"
+                value={data.kpis.vendasGanhas}
+                target={20}
+                format="number"
+                icon={CheckCircle}
+                trend={8.3}
+              />
+              <KpiCard
+                title="Taxa de Conversão"
+                value={data.kpis.taxaConversao}
+                target={data.kpis.metaConversao}
+                format="percent"
+                icon={Target}
+                trend={-2.1}
+              />
+              <KpiCard
+                title="Ticket Médio"
+                value={data.kpis.ticketMedio}
+                target={5000}
+                format="currency"
+                icon={TrendingUp}
+                trend={5.7}
+              />
+            </KpiGrid>
+          )}
+        </DataLoader>
 
         {/* Charts Row */}
-        <div className="grid grid-cols-3 gap-6 mb-8">
-          
-          {/* Vendas Mensais */}
-          <Card className="col-span-2 bg-slate-800/50 border-slate-700">
-            <CardHeader>
-              <CardTitle className="text-white flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-blue-400" />
-                Vendas por Mês — Progresso Mensal vs Meta
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={data.vendasMensais}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                    <XAxis dataKey="mes" stroke="#64748b" fontSize={12} />
-                    <YAxis stroke="#64748b" fontSize={12} tickFormatter={(v) => formatCurrency(v)} />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }}
-                    />
-                    <Bar dataKey="meta" fill="#334155" name="Meta" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="valor" fill={COLORS.primary} name="Real" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
+        {data && (
+          <div className="grid grid-cols-3 gap-6 mb-8">
 
-          {/* Pipeline Status */}
+            {/* Vendas Mensais */}
+            <Card className="col-span-2 bg-slate-800/50 border-slate-700">
+              <CardHeader>
+                <CardTitle className="text-white flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-blue-400" />
+                  Vendas por Mês — Progresso Mensal vs Meta
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={data.vendasMensais}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                      <XAxis dataKey="mes" stroke="#64748b" fontSize={12} />
+                      <YAxis stroke="#64748b" fontSize={12} tickFormatter={(v) => formatCompactCurrency(v)} />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }}
+                      />
+                      <Bar dataKey="meta" fill="#334155" name="Meta" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="valor" fill={COLORS.primary} name="Real" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Pipeline Status */}
+            <Card className="bg-slate-800/50 border-slate-700">
+              <CardHeader>
+                <CardTitle className="text-white flex items-center gap-2">
+                  <ShoppingCart className="w-5 h-5 text-purple-400" />
+                  Pipeline por Status
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={data.pipelineStatus}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={90}
+                        paddingAngle={2}
+                        dataKey="value"
+                      >
+                        {data.pipelineStatus.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="grid grid-cols-2 gap-2 mt-4">
+                  {data.pipelineStatus.map((item, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
+                      <span className="text-xs text-slate-400">{item.name}</span>
+                      <span className="text-xs font-medium text-white ml-auto">{item.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Ranking Vendedores */}
+        {data && (
           <Card className="bg-slate-800/50 border-slate-700">
             <CardHeader>
               <CardTitle className="text-white flex items-center gap-2">
-                <ShoppingCart className="w-5 h-5 text-purple-400" />
-                Pipeline por Status
+                <Users className="w-5 h-5 text-orange-400" />
+                Ranking de Vendedores — Desempenho vs Meta
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={data.pipelineStatus}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={90}
-                      paddingAngle={2}
-                      dataKey="value"
-                    >
-                      {data.pipelineStatus.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="grid grid-cols-2 gap-2 mt-4">
-                {data.pipelineStatus.map((item, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
-                    <span className="text-xs text-slate-400">{item.name}</span>
-                    <span className="text-xs font-medium text-white ml-auto">{item.value}</span>
-                  </div>
-                ))}
+              <div className="space-y-4">
+                {data.rankingVendedores.map((v, i) => {
+                  const pct = (v.valor / v.meta) * 100;
+                  const color = getStatusColor(v.valor, v.meta);
+                  return (
+                    <div key={i} className="flex items-center gap-4">
+                      <span className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-white font-medium">
+                        {i + 1}
+                      </span>
+                      <div className="flex-1">
+                        <div className="flex justify-between mb-1">
+                          <span className="text-white font-medium">{v.nome}</span>
+                          <span className="text-slate-400 text-sm">{formatCompactCurrency(v.valor)} / {formatCompactCurrency(v.meta)}</span>
+                        </div>
+                        <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: color }}
+                          />
+                        </div>
+                      </div>
+                      <span className="text-sm font-medium w-12 text-right" style={{ color }}>
+                        {pct.toFixed(0)}%
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
-        </div>
-
-        {/* Ranking Vendedores */}
-        <Card className="bg-slate-800/50 border-slate-700">
-          <CardHeader>
-            <CardTitle className="text-white flex items-center gap-2">
-              <Users className="w-5 h-5 text-orange-400" />
-              Ranking de Vendedores — Desempenho vs Meta
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {data.rankingVendedores.map((v, i) => {
-                const pct = (v.valor / v.meta) * 100;
-                const color = getStatusColor(v.valor, v.meta);
-                return (
-                  <div key={i} className="flex items-center gap-4">
-                    <span className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-white font-medium">
-                      {i + 1}
-                    </span>
-                    <div className="flex-1">
-                      <div className="flex justify-between mb-1">
-                        <span className="text-white font-medium">{v.nome}</span>
-                        <span className="text-slate-400 text-sm">{formatCurrency(v.valor)} / {formatCurrency(v.meta)}</span>
-                      </div>
-                      <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
-                        <div
-                          className="h-full rounded-full transition-all"
-                          style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: color }}
-                        />
-                      </div>
-                    </div>
-                    <span className="text-sm font-medium w-12 text-right" style={{ color }}>
-                      {pct.toFixed(0)}%
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
+        )}
 
       </div>
     </div>

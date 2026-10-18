@@ -36,3 +36,10 @@ export function formatDateTime(date: Date | string): string {
     minute: '2-digit',
   }).format(d);
 }
+
+// Formata valor monetário de forma compacta (R$ 10K, R$ 1.5M)
+export function formatCompactCurrency(value: number): string {
+  if (value >= 1000000) return `R$ ${(value / 1000000).toFixed(1)}M`;
+  if (value >= 1000) return `R$ ${(value / 1000).toFixed(0)}K`;
+  return `R$ ${value.toFixed(0)}`;
+}
