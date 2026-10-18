@@ -5,12 +5,21 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, LineChart, Line, Legend
+  PieChart, Pie, Cell
 } from 'recharts';
 import {
-  TrendingUp, TrendingDown, DollarSign, Users, Target, AlertTriangle,
-  ShoppingCart, Clock, CheckCircle, XCircle
+  TrendingUp, DollarSign, Users, Target,
+  ShoppingCart, CheckCircle, Filter
 } from 'lucide-react';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
+} from '@/components/ui/select';
+
+interface DashboardFilters {
+  period: string;
+  pipeline: string;
+  vendedor: string;
+}
 
 interface DashboardData {
   kpis: {
@@ -94,16 +103,30 @@ function KpiCard({ title, value, target, format, icon: Icon, trend }: any) {
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [filters, setFilters] = useState<DashboardFilters>({
+    period: '30d',
+    pipeline: 'all',
+    vendedor: 'all'
+  });
 
   useEffect(() => {
-    fetch('/api/dashboard-full')
+    const params = new URLSearchParams({
+      period: filters.period,
+      pipeline: filters.pipeline,
+      vendedor: filters.vendedor
+    });
+    fetch(`/api/dashboard-full?${params.toString()}`)
       .then(res => res.json())
       .then(d => {
         setData(d);
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, []);
+  }, [filters]);
+
+  const updateFilter = (key: keyof DashboardFilters, value: string) => {
+    setFilters(prev => ({ ...prev, [key]: value }));
+  };
 
   if (loading) {
     return (
@@ -125,7 +148,7 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-slate-950 p-6">
       <div className="max-w-7xl mx-auto">
         
-        {/* Header */}
+        {/* Header + Filters */}
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-bold text-white">Visão Geral</h1>
@@ -133,10 +156,52 @@ export default function DashboardPage() {
               Última atualização: {new Date(data.ultimoSync).toLocaleString('pt-BR')}
             </p>
           </div>
-          <div className="flex gap-2">
-            <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
-              <CheckCircle className="w-3 h-3 mr-1" /> Online
-            </Badge>
+          
+          {/* Filters Bar */}
+          <div className="flex items-center gap-3 bg-slate-800/50 p-3 rounded-lg border border-slate-700">
+            <Filter className="w-4 h-4 text-slate-400" />
+            
+            {/* Period */}
+            <Select value={filters.period} onValueChange={(v) => v && updateFilter('period', v)}>
+              <SelectTrigger className="w-32 bg-slate-700 border-slate-600 text-white">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-slate-800 border-slate-700">
+                <SelectItem value="7d">Últimos 7 dias</SelectItem>
+                <SelectItem value="30d">Últimos 30 dias</SelectItem>
+                <SelectItem value="90d">Últimos 90 dias</SelectItem>
+                <SelectItem value="mes">Este mês</SelectItem>
+                <SelectItem value="ano">Este ano</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Pipeline */}
+            <Select value={filters.pipeline} onValueChange={(v) => v && updateFilter('pipeline', v)}>
+              <SelectTrigger className="w-36 bg-slate-700 border-slate-600 text-white">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-slate-800 border-slate-700">
+                <SelectItem value="all">Todos Pipelines</SelectItem>
+                <SelectItem value="orcamentos">Orçamentos</SelectItem>
+                <SelectItem value="carteira">Carteira</SelectItem>
+                <SelectItem value="prospeccao">Prospecção</SelectItem>
+                <SelectItem value="inativos">Inativos</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Vendedor */}
+            <Select value={filters.vendedor} onValueChange={(v) => v && updateFilter('vendedor', v)}>
+              <SelectTrigger className="w-40 bg-slate-700 border-slate-600 text-white">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-slate-800 border-slate-700">
+                <SelectItem value="all">Todos Vendedores</SelectItem>
+                <SelectItem value="katherine">Katherine</SelectItem>
+                <SelectItem value="eduardo">Eduardo</SelectItem>
+                <SelectItem value="emily">Emily</SelectItem>
+                <SelectItem value="rafael">Rafael</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 

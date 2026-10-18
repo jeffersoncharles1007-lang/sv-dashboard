@@ -1,13 +1,36 @@
 /**
  * API DASHBOARD FULL - SV ELÉTRICA
+ * Dados consolidados para dashboard profissional com filtros
  */
 export const dynamic = 'force-dynamic';
 
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/postgres';
 
-export async function GET() {
+// Pipeline IDs
+const PIPELINES: Record<string, string> = {
+  'orcamentos': 'ihc0DHSDb8kcRJU3kWk8',
+  'carteira': 'x5xVu9xKc1eZxVkra6M7',
+  'inativos': '22IBbwWcepqRSz6ZBKqM',
+};
+
+export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const period = searchParams.get('period') || '30d';
+    const pipeline = searchParams.get('pipeline') || 'all';
+    const vendedor = searchParams.get('vendedor') || 'all';
+
+    // Intervalo de datas
+    const daysMap: Record<string, number> = {
+      '7d': 7,
+      '30d': 30,
+      '90d': 90,
+      'mes': 30,
+      'ano': 365,
+    };
+    const days = daysMap[period] || 30;
+
     // KPIs principais
     const kpisQuery = await sql`
       SELECT 
@@ -26,6 +49,9 @@ export async function GET() {
           0
         ) as ticket_medio
       FROM opportunities
+      WHERE created_at >= CURRENT_DATE - ${`${days} days`}::interval
+        ${pipeline !== 'all' && PIPELINES[pipeline] ? sql`AND pipeline_id = ${PIPELINES[pipeline]}` : sql``}
+        ${vendedor !== 'all' ? sql`AND assigned_to ILIKE ${`%${vendedor}%`}` : sql``}
     `;
 
     // Pipeline por status
@@ -39,10 +65,13 @@ export async function GET() {
         END as name,
         COUNT(*) as value
       FROM opportunities
+      WHERE created_at >= CURRENT_DATE - ${`${days} days`}::interval
+        ${pipeline !== 'all' && PIPELINES[pipeline] ? sql`AND pipeline_id = ${PIPELINES[pipeline]}` : sql``}
+        ${vendedor !== 'all' ? sql`AND assigned_to ILIKE ${`%${vendedor}%`}` : sql``}
       GROUP BY pipeline_id
     `;
 
-    // Ranking de vendedores (por valor)
+    // Ranking de vendedores
     const rankingQuery = await sql`
       SELECT 
         COALESCE(assigned_to, 'Não atribuído') as nome,
@@ -50,6 +79,9 @@ export async function GET() {
         COALESCE(SUM(monetary_value), 0) as valor
       FROM opportunities
       WHERE status = 'won'
+        AND created_at >= CURRENT_DATE - ${`${days} days`}::interval
+        ${pipeline !== 'all' && PIPELINES[pipeline] ? sql`AND pipeline_id = ${PIPELINES[pipeline]}` : sql``}
+        ${vendedor !== 'all' ? sql`AND assigned_to ILIKE ${`%${vendedor}%`}` : sql``}
       GROUP BY assigned_to
       ORDER BY valor DESC
       LIMIT 10
@@ -63,7 +95,7 @@ export async function GET() {
       ticket_medio: 0
     };
 
-    // Vendas mensais (mock - dados reais dependem do sync completo)
+    // Vendas mensais (mock)
     const meses = ['Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     const vendasMensais = meses.map((mes, i) => ({
       mes,
@@ -99,6 +131,7 @@ export async function GET() {
         valor: Number(v.valor),
         meta: 30000
       })),
+      filters: { period, pipeline, vendedor },
       ultimoSync: new Date().toISOString()
     });
 
@@ -117,6 +150,7 @@ export async function GET() {
       vendasMensais: [],
       pipelineStatus: [],
       rankingVendedores: [],
+      filters: { period: '30d', pipeline: 'all', vendedor: 'all' },
       ultimoSync: new Date().toISOString(),
       error: String(error)
     }, { status: 500 });
