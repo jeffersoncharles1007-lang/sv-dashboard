@@ -1,0 +1,105 @@
+{
+  "project": "SV Elétrica Dashboard",
+  "version": "2.0",
+  "canvas": {
+    "width": 1920,
+    "height": 1080,
+    "scroll": false
+  },
+  "pages": [
+    {
+      "id": "visao-geral",
+      "name": "Visão Geral",
+      "icon": "layout-dashboard"
+    },
+    {
+      "id": "vendas",
+      "name": "Vendas",
+      "icon": "trending-up"
+    },
+    {
+      "id": "coaching",
+      "name": "Coaching",
+      "icon": "users"
+    },
+    {
+      "id": "pipeline",
+      "name": "Pipeline",
+      "icon": "filter"
+    }
+  ],
+  "kpis": {
+    "visao-geral": [
+      {
+        "id": "receita-pipeline",
+        "name": "Receita em Pipeline",
+        "type": "currency",
+        "value": "soma_oportunidades_valor",
+        "comparison": "meta_receita",
+        "format": "BRL"
+      },
+      {
+        "id": "vendas-ganhas",
+        "name": "Vendas Ganhas",
+        "type": "number",
+        "value": "count_ganhas",
+        "comparison": "anterior_periodo",
+        "format": "number"
+      },
+      {
+        "id": "taxa-conversao",
+        "name": "Taxa de Conversão",
+        "type": "percentage",
+        "value": "conversao_ganhas/total",
+        "comparison": "meta_conversao",
+        "format": "percent"
+      },
+      {
+        "id": "ticket-medio",
+        "name": "Ticket Médio",
+        "type": "currency",
+        "value": "media_valor_ganhas",
+        "comparison": "anterior_periodo",
+        "format": "BRL"
+      }
+    ]
+  },
+  "charts": {
+    "visao-geral": [
+      {
+        "id": "vendas-mensal",
+        "type": "bar",
+        "title": "Vendas por Mês",
+        "xAxis": "mes",
+        "yAxis": "valor",
+        "comparison": true
+      },
+      {
+        "id": "pipeline-status",
+        "type": "donut",
+        "title": "Pipeline por Status",
+        "value": "quantidade",
+        "group": "pipeline"
+      },
+      {
+        "id": "vendedores-ranking",
+        "type": "horizontal-bar",
+        "title": "Ranking de Vendas",
+        "xAxis": "valor",
+        "yAxis": "vendedor"
+      }
+    ]
+  },
+  "insights": [
+    {
+      "id": "top-vendedor",
+      "query": "vendedor_mais_vendeu",
+      "format": "{nome} lidera com R$ {valor}"
+    },
+    {
+      "id": "oportunidade-calor",
+      "query": "clientes_quentes_sem_contato",
+      "format": "{count} clientes aguardam retorno"
+    }
+  ]
+}
