@@ -18,7 +18,7 @@ export async function GET() {
           ELSE 'Prospecção'
         END as estagio,
         COUNT(*) as quantidade,
-        COALESCE(SUM(valor_total), 0) as valor
+        COALESCE(SUM(monetary_value), 0) as valor
       FROM opportunities
       WHERE status = 'open'
         AND created_at >= CURRENT_DATE - INTERVAL '90 days'
@@ -37,14 +37,14 @@ export async function GET() {
     const friosQuery = await sql`
       SELECT 
         o.name as nome,
-        o.valor_total as valor,
+        o.monetary_value as valor,
         CURRENT_DATE - DATE(o.last_stage_change) as dias,
         COALESCE(o.assigned_to_name, 'Não atribuído') as vendedor
       FROM opportunities o
       WHERE o.status = 'open'
         AND o.last_stage_change < CURRENT_DATE - INTERVAL '14 days'
-        AND o.valor_total > 5000
-      ORDER BY o.valor_total DESC
+        AND o.monetary_value > 5000
+      ORDER BY o.monetary_value DESC
       LIMIT 20
     `;
 
@@ -65,7 +65,7 @@ export async function GET() {
       FROM opportunities
       WHERE pipeline_id = 'ihc0DHSDb8kcRJU3kWk8'
         AND status = 'open'
-        AND valor_total > 50000
+        AND monetary_value > 50000
     `;
     
     if (Number(orcamentosQuery[0]?.count || 0) > 0) {

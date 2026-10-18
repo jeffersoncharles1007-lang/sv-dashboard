@@ -12,8 +12,8 @@ export async function GET() {
     const tendenciaQuery = await sql`
       SELECT 
         DATE(monetization_attribution_date) as data,
-        SUM(valor_total) as valor,
-        SUM(SUM(valor_total)) OVER (ORDER BY DATE(monetization_attribution_date)) as acumulado
+        SUM(monetary_value) as valor,
+        SUM(SUM(monetary_value)) OVER (ORDER BY DATE(monetization_attribution_date)) as acumulado
       FROM opportunities
       WHERE status = 'won'
         AND monetization_attribution_date >= CURRENT_DATE - INTERVAL '30 days'
@@ -25,7 +25,7 @@ export async function GET() {
     const oportunidadesQuery = await sql`
       SELECT 
         o.name as nome,
-        o.valor_total as valor,
+        o.monetary_value as valor,
         CASE 
           WHEN o.pipeline_id = 'ihc0DHSDb8kcRJU3kWk8' THEN 'Orçamento'
           WHEN o.pipeline_id = 'x5xVu9xKc1eZxVkra6M7' THEN 'Carteira'
@@ -35,7 +35,7 @@ export async function GET() {
         CURRENT_DATE - DATE(o.created_at) as dias
       FROM opportunities o
       WHERE o.status = 'open'
-      ORDER BY o.valor_total DESC
+      ORDER BY o.monetary_value DESC
       LIMIT 50
     `;
 
@@ -43,7 +43,7 @@ export async function GET() {
     const statsQuery = await sql`
       SELECT 
         COUNT(*) as total,
-        COALESCE(SUM(valor_total), 0) as valor_total,
+        COALESCE(SUM(monetary_value), 0) as monetary_value,
         COUNT(CASE WHEN pipeline_id = 'ihc0DHSDb8kcRJU3kWk8' THEN 1 END) as em_negociacao,
         COALESCE(
           ROUND(AVG(CURRENT_DATE - DATE(created_at))::numeric, 0),
@@ -53,7 +53,7 @@ export async function GET() {
       WHERE status = 'open'
     `;
 
-    const stats = statsQuery[0] || { total: 0, valor_total: 0, em_negociacao: 0, prazo_medio: 0 };
+    const stats = statsQuery[0] || { total: 0, monetary_value: 0, em_negociacao: 0, prazo_medio: 0 };
 
     return NextResponse.json({
       tendencia: tendenciaQuery.map((t: any) => ({
@@ -70,7 +70,7 @@ export async function GET() {
       })),
       stats: {
         totalOportunidades: Number(stats.total),
-        valorTotal: Number(stats.valor_total),
+        valorTotal: Number(stats.monetary_value),
         emNegociacao: Number(stats.em_negociacao),
         prazoMedio: Number(stats.prazo_medio)
       }
