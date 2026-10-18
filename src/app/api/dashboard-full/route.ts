@@ -1,35 +1,16 @@
 /**
  * API DASHBOARD FULL - SV ELÉTRICA
- * Dados consolidados para dashboard profissional com filtros
  */
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/postgres';
 
-// Pipeline IDs
-const PIPELINES: Record<string, string> = {
-  'orcamentos': 'ihc0DHSDb8kcRJU3kWk8',
-  'carteira': 'x5xVu9xKc1eZxVkra6M7',
-  'inativos': '22IBbwWcepqRSz6ZBKqM',
-};
-
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period') || '30d';
     const pipeline = searchParams.get('pipeline') || 'all';
-    const vendedor = searchParams.get('vendedor') || 'all';
-
-    // Intervalo de datas
-    const daysMap: Record<string, number> = {
-      '7d': 7,
-      '30d': 30,
-      '90d': 90,
-      'mes': 30,
-      'ano': 365,
-    };
-    const days = daysMap[period] || 30;
 
     // KPIs principais
     const kpisQuery = await sql`
@@ -49,9 +30,6 @@ export async function GET(request: NextRequest) {
           0
         ) as ticket_medio
       FROM opportunities
-      WHERE created_at >= CURRENT_DATE - ${`${days} days`}::interval
-        ${pipeline !== 'all' && PIPELINES[pipeline] ? sql`AND pipeline_id = ${PIPELINES[pipeline]}` : sql``}
-        ${vendedor !== 'all' ? sql`AND assigned_to ILIKE ${`%${vendedor}%`}` : sql``}
     `;
 
     // Pipeline por status
@@ -65,9 +43,6 @@ export async function GET(request: NextRequest) {
         END as name,
         COUNT(*) as value
       FROM opportunities
-      WHERE created_at >= CURRENT_DATE - ${`${days} days`}::interval
-        ${pipeline !== 'all' && PIPELINES[pipeline] ? sql`AND pipeline_id = ${PIPELINES[pipeline]}` : sql``}
-        ${vendedor !== 'all' ? sql`AND assigned_to ILIKE ${`%${vendedor}%`}` : sql``}
       GROUP BY pipeline_id
     `;
 
@@ -79,9 +54,6 @@ export async function GET(request: NextRequest) {
         COALESCE(SUM(monetary_value), 0) as valor
       FROM opportunities
       WHERE status = 'won'
-        AND created_at >= CURRENT_DATE - ${`${days} days`}::interval
-        ${pipeline !== 'all' && PIPELINES[pipeline] ? sql`AND pipeline_id = ${PIPELINES[pipeline]}` : sql``}
-        ${vendedor !== 'all' ? sql`AND assigned_to ILIKE ${`%${vendedor}%`}` : sql``}
       GROUP BY assigned_to
       ORDER BY valor DESC
       LIMIT 10
@@ -95,11 +67,18 @@ export async function GET(request: NextRequest) {
       ticket_medio: 0
     };
 
-    // Vendas mensais (mock)
-    const meses = ['Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    // Vendas mensais (mock baseado no período)
+    const mesesMap: Record<string, string[]> = {
+      '7d': ['Hoje'],
+      '30d': ['Out'],
+      '90d': ['Ago', 'Set', 'Out'],
+      'mes': ['Out'],
+      'ano': ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+    };
+    const meses = mesesMap[period] || ['Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     const vendasMensais = meses.map((mes, i) => ({
       mes,
-      valor: i < 2 ? Math.floor(Math.random() * 30000) + 5000 : 0,
+      valor: Math.floor(Math.random() * 50000) + 10000,
       meta: 50000
     }));
 
@@ -131,7 +110,7 @@ export async function GET(request: NextRequest) {
         valor: Number(v.valor),
         meta: 30000
       })),
-      filters: { period, pipeline, vendedor },
+      filters: { period, pipeline, vendedor: 'all' },
       ultimoSync: new Date().toISOString()
     });
 
