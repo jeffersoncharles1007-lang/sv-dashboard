@@ -16,12 +16,177 @@ import {
   Legend, 
   ResponsiveContainer,
   Area,
-  AreaChart
+  AreaChart,
+  TooltipProps
 } from 'recharts';
 import { formatCurrency } from '@/lib/utils';
 import { STAGE_NAMES } from './constants';
+import { TrendingUp, TrendingDown, Target } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 const COLORS = ['#3b82f6', '#8b5cf6', '#f59e0b', '#10b981', '#ef4444'];
+
+// ============================================
+// CUSTOM TOOLTIPS - Contexto de Meta
+// ============================================
+
+// Tipos customizados para tooltips do Recharts
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: Array<{
+    value: number;
+    name: string;
+    color?: string;
+    payload?: Record<string, unknown>;
+  }>;
+  label?: string;
+}
+
+interface MetaTooltipProps extends CustomTooltipProps {
+  showMeta?: boolean;
+  target?: number;
+  format?: 'currency' | 'percent' | 'number';
+  title?: string;
+}
+
+function MetaTooltip({ 
+  active, 
+  payload, 
+  label, 
+  showMeta = false,
+  target,
+  format = 'number',
+  title
+}: MetaTooltipProps) {
+  if (!active || !payload || payload.length === 0) return null;
+  
+  const value = payload[0].value;
+  const name = payload[0].name || '';
+  
+  // Calcular variação vs meta se disponível
+  const variation = target && target > 0 
+    ? ((value / target) * 100 - 100) 
+    : null;
+  
+  const formatValue = (val: number) => {
+    switch (format) {
+      case 'currency':
+        return formatCurrency(val);
+      case 'percent':
+        return `${val.toFixed(1)}%`;
+      default:
+        return val.toLocaleString('pt-BR');
+    }
+  };
+  
+  return (
+    <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg shadow-lg p-3 min-w-[160px]">
+      {/* Header */}
+      <p className="text-xs text-[var(--muted-foreground)] mb-2">
+        {title || label}
+      </p>
+      
+      {/* Valor principal */}
+      <div className="flex items-center gap-2">
+        <span className="text-lg font-bold text-[var(--foreground)]">
+          {formatValue(value)}
+        </span>
+        {variation !== null && (
+          <div className={cn(
+            'flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium',
+            variation >= 0 
+              ? 'bg-emerald-500/10 text-emerald-600' 
+              : 'bg-red-500/10 text-red-500'
+          )}>
+            {variation >= 0 ? (
+              <TrendingUp className="w-3 h-3" />
+            ) : (
+              <TrendingDown className="w-3 h-3" />
+            )}
+            <span>{variation >= 0 ? '+' : ''}{variation.toFixed(1)}%</span>
+          </div>
+        )}
+      </div>
+      
+      {/* Meta info */}
+      {showMeta && target && target > 0 && (
+        <div className="mt-2 pt-2 border-t border-[var(--border)] flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
+          <Target className="w-3 h-3" />
+          <span>Meta: {formatValue(target)}</span>
+        </div>
+      )}
+      
+      {/* Nome da série */}
+      {name && (
+        <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+          {name}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// Tooltip para gráfico de barras com comparação
+interface BarComparisonTooltipProps extends CustomTooltipProps {
+  showComparison?: boolean;
+  comparisonTarget?: number;
+}
+
+function BarComparisonTooltip({ 
+  active, 
+  payload, 
+  label,
+  showComparison = false,
+  comparisonTarget
+}: BarComparisonTooltipProps) {
+  if (!active || !payload || payload.length === 0) return null;
+  
+  const data = payload[0];
+  const value = data.value;
+  
+  const comparison = comparisonTarget && comparisonTarget > 0
+    ? ((value / comparisonTarget) * 100 - 100)
+    : null;
+  
+  return (
+    <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg shadow-lg p-3">
+      <p className="text-sm font-medium text-[var(--foreground)] mb-2">
+        {label}
+      </p>
+      
+      <div className="space-y-2">
+        {payload.map((entry: { value: number; name: string; color?: string }, index: number) => (
+          <div key={index} className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <div 
+                className="w-3 h-3 rounded" 
+                style={{ backgroundColor: entry.color }} 
+              />
+              <span className="text-xs text-[var(--muted-foreground)]">
+                {entry.name}
+              </span>
+            </div>
+            <span className="text-sm font-medium text-[var(--foreground)] tabular-nums">
+              {formatCurrency(entry.value)}
+            </span>
+          </div>
+        ))}
+        
+        {showComparison && comparison !== null && (
+          <div className="pt-2 border-t border-[var(--border)] flex items-center justify-between">
+            <span className="text-xs text-[var(--muted-foreground)]">vs Meta</span>
+            <span className={cn(
+              'text-sm font-medium tabular-nums',
+              comparison >= 0 ? 'text-emerald-600' : 'text-red-500'
+            )}>
+              {comparison >= 0 ? '+' : ''}{comparison.toFixed(1)}%
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // Gráfico de Evolução (linhas)
 interface EvolutionChartProps {
@@ -34,7 +199,7 @@ interface EvolutionChartProps {
   }>;
 }
 
-export function EvolutionChart({ data }: EvolutionChartProps) {
+export function EvolutionChart({ data, target }: EvolutionChartProps & { target?: { created?: number; won?: number; value?: number } }) {
   // Últimos 14 dias
   const chartData = data.slice(-14);
   
@@ -66,11 +231,7 @@ export function EvolutionChart({ data }: EvolutionChartProps) {
           className="text-xs"
         />
         <Tooltip 
-          contentStyle={{ 
-            borderRadius: '8px', 
-            border: '1px solid var(--border)',
-            backgroundColor: 'var(--card)'
-          }}
+          content={<MetaTooltip showMeta format="number" />}
         />
         <Legend />
         <Area 
@@ -108,6 +269,7 @@ interface FunnelChartProps {
     stage: string;
     count: number;
     value: number;
+    target?: number;
   }>;
 }
 
@@ -120,8 +282,13 @@ export function PipelineFunnelChart({ data }: FunnelChartProps) {
         const width = (item.count / maxCount) * 100;
         const color = index < 3 ? COLORS[index] : index === 3 ? '#10b981' : '#ef4444';
         
+        // Calcular variação vs target se disponível
+        const variation = item.target && item.target > 0
+          ? ((item.count / item.target) * 100 - 100)
+          : null;
+        
         return (
-          <div key={item.stage} className="space-y-2">
+          <div key={item.stage} className="space-y-2 group">
             <div className="flex justify-between items-center">
               <span className="text-sm font-medium">{item.stage}</span>
               <div className="flex items-center gap-4 text-sm text-muted-foreground">
@@ -129,11 +296,21 @@ export function PipelineFunnelChart({ data }: FunnelChartProps) {
                 <span className="font-medium text-foreground">
                   {formatCurrency(item.value)}
                 </span>
+                {variation !== null && (
+                  <span className={cn(
+                    'text-xs px-1.5 py-0.5 rounded',
+                    variation >= 0 
+                      ? 'bg-emerald-500/10 text-emerald-600' 
+                      : 'bg-red-500/10 text-red-500'
+                  )}>
+                    {variation >= 0 ? '+' : ''}{variation.toFixed(0)}%
+                  </span>
+                )}
               </div>
             </div>
             <div className="h-8 bg-muted rounded-lg overflow-hidden">
               <div
-                className="h-full rounded-lg transition-all duration-500 flex items-center px-3"
+                className="h-full rounded-lg transition-all duration-500 flex items-center px-3 group-hover:brightness-110"
                 style={{ 
                   width: `${Math.max(width, 5)}%`, 
                   backgroundColor: color 
@@ -163,6 +340,30 @@ interface SourceChartProps {
 export function SourcePieChart({ data }: SourceChartProps) {
   const total = data.reduce((sum, d) => sum + d.count, 0);
   
+  // Custom tooltip for pie chart
+  const CustomPieTooltip = ({ active, payload }: CustomTooltipProps) => {
+    if (!active || !payload || !payload[0]) return null;
+    
+    const item = payload[0];
+    const percentage = (item.value / total) * 100;
+    
+    return (
+      <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg shadow-lg p-3">
+        <p className="text-sm font-medium text-[var(--foreground)]">
+          {item.name}
+        </p>
+        <div className="mt-1 space-y-1">
+          <p className="text-lg font-bold text-[var(--foreground)]">
+            {item.value} <span className="text-xs font-normal text-[var(--muted-foreground)]">oportunidades</span>
+          </p>
+          <p className="text-xs text-[var(--muted-foreground)]">
+            {percentage.toFixed(1)}% do total
+          </p>
+        </div>
+      </div>
+    );
+  };
+  
   return (
     <div className="flex items-center gap-8">
       <ResponsiveContainer width={200} height={200}>
@@ -180,17 +381,7 @@ export function SourcePieChart({ data }: SourceChartProps) {
               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
             ))}
           </Pie>
-          <Tooltip 
-            formatter={(value, name) => [
-              `${value} (${((value as number / total) * 100).toFixed(1)}%)`,
-              name
-            ]}
-            contentStyle={{ 
-              borderRadius: '8px', 
-              border: '1px solid var(--border)',
-              backgroundColor: 'var(--card)'
-            }}
-          />
+          <Tooltip content={<CustomPieTooltip />} />
         </PieChart>
       </ResponsiveContainer>
       <div className="flex-1 space-y-2">
@@ -221,7 +412,7 @@ interface VendorChartProps {
   }>;
 }
 
-export function VendorBarChart({ data }: VendorChartProps) {
+export function VendorBarChart({ data, target }: VendorChartProps & { target?: number }) {
   return (
     <ResponsiveContainer width="100%" height={300}>
       <BarChart 
@@ -238,12 +429,7 @@ export function VendorBarChart({ data }: VendorChartProps) {
           width={90}
         />
         <Tooltip 
-          contentStyle={{ 
-            borderRadius: '8px', 
-            border: '1px solid var(--border)',
-            backgroundColor: 'var(--card)'
-          }}
-          formatter={(value) => formatCurrency(value as number)}
+          content={<BarComparisonTooltip showComparison comparisonTarget={target} />}
         />
         <Legend />
         <Bar dataKey="total" fill="#3b82f6" name="Total" radius={[0, 4, 4, 0]} />
@@ -261,7 +447,7 @@ interface RevenueChartProps {
   }>;
 }
 
-export function RevenueChart({ data }: RevenueChartProps) {
+export function RevenueChart({ data, target }: RevenueChartProps & { target?: number }) {
   const chartData = data.slice(-14);
   
   return (
@@ -280,12 +466,7 @@ export function RevenueChart({ data }: RevenueChartProps) {
           tickFormatter={(value) => `R$ ${(value / 1000).toFixed(0)}k`}
         />
         <Tooltip 
-          formatter={(value) => formatCurrency(value as number)}
-          contentStyle={{ 
-            borderRadius: '8px', 
-            border: '1px solid var(--border)',
-            backgroundColor: 'var(--card)'
-          }}
+          content={<MetaTooltip showMeta format="currency" title="Receita" />}
         />
         <Area 
           type="monotone" 
